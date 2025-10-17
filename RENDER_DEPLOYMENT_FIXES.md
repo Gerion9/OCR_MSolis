@@ -137,12 +137,14 @@ INFO: Uvicorn running on http://localhost:8000  ← Binding incorrecto
 | Variable | Valor | Notas |
 |----------|-------|-------|
 | `GEMINI_API_KEY` | `your_key_here` | ⚠️ **CRÍTICO** - Obtener de Google AI Studio |
-| `PYTHON_VERSION` | `3.11.11` | Opcional (ya en render.yaml) |
-| `DEBUG_MODE` | `False` | Opcional (se fuerza en código) |
 | `GEMINI_MODEL` | `gemini-1.5-pro` | Opcional (default en código) |
 | `GEMINI_TIMEOUT` | `300` | Opcional (default 5 min) |
 
-**Nota**: `HOST` y `PORT` se ignoran/sobrescriben en el código, así que no importa qué valores tengan.
+**Notas importantes**:
+- ❌ **NO configurar** `HOST` - El código lo fuerza a `0.0.0.0` en producción
+- ❌ **NO configurar** `PORT` - Render lo maneja automáticamente (default: 10000)
+- ❌ **NO configurar** `DEBUG_MODE` - El código lo fuerza a `False` en producción
+- ✅ Las configuraciones en `render.yaml` son suficientes para todo excepto `GEMINI_API_KEY`
 
 ---
 
@@ -215,15 +217,38 @@ Si dice `host='localhost'`, hay un problema con el código.
 # Verificar cambios
 git status
 
-# Agregar archivos modificados
-git add start_server.py backend/main.py requirements.txt runtime.txt render.yaml
+# Agregar todos los archivos modificados
+git add start_server.py backend/main.py requirements.txt runtime.txt render.yaml RENDER_DEPLOYMENT_FIXES.md verify_deployment.py
 
 # Commit con mensaje descriptivo
-git commit -m "Fix: Force 0.0.0.0 binding on Render + production mode"
+git commit -m "Fix: Force 0.0.0.0 binding on Render + production mode
+
+- Force host to 0.0.0.0 in production (Render detection)
+- Disable debug mode in production
+- Update dependencies (pydantic, fastapi, etc.)
+- Remove PORT/HOST from render.yaml (Render handles it)
+- Add deployment verification script"
 
 # Push a repositorio (trigger auto-deploy en Render)
 git push origin main
 ```
+
+### 🧪 Después del Deploy: Verificar
+
+Una vez que Render complete el deployment, ejecuta el script de verificación:
+
+```bash
+# Instalar requests si no lo tienes
+pip install requests
+
+# Ejecutar verificación
+python verify_deployment.py
+```
+
+El script te pedirá la URL de tu app y verificará automáticamente:
+- ✅ Health check
+- ✅ Frontend
+- ✅ API docs
 
 ---
 
