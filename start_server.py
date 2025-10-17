@@ -30,9 +30,10 @@ def main():
         print("   Edita el archivo .env y agrega tu API key de Gemini")
         print("   Obténla en: https://makersuite.google.com/app/apikey\n")
     
-    host = os.getenv("HOST", "localhost")
+    # Render requires binding to 0.0.0.0 for public access
+    host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", "8000"))
-    debug = os.getenv("DEBUG_MODE", "True") == "True"
+    debug = os.getenv("DEBUG_MODE", "False") == "True"
     
     print(f"🌐 Servidor: http://{host}:{port}")
     print(f"📚 Documentación API: http://{host}:{port}/docs")
