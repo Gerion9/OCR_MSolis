@@ -19,9 +19,14 @@ def main():
     print("="*70)
     print("\n📋 Iniciando servidor...\n")
     
-    # Cargar variables de entorno
+    # Cargar variables de entorno SOLO en desarrollo local (no en Render)
     from dotenv import load_dotenv
-    load_dotenv()
+    is_render = os.getenv("RENDER", "false").lower() == "true"
+    if not is_render:
+        load_dotenv()
+        print("📝 Cargando variables de entorno desde .env (modo local)")
+    else:
+        print("☁️  Usando variables de entorno de Render")
     
     # Verificar configuración
     api_key = os.getenv("GEMINI_API_KEY", "")
@@ -31,24 +36,29 @@ def main():
         print("   Obténla en: https://makersuite.google.com/app/apikey\n")
     
     # Render requires binding to 0.0.0.0 for public access
-    # Force production settings on Render (detected by RENDER env var)
-    is_render = os.getenv("RENDER", "false").lower() == "true"
-    
-    host = os.getenv("HOST", "0.0.0.0")
-    port = int(os.getenv("PORT", "8000"))
-    
-    # Force debug=False on Render, even if DEBUG_MODE is set
+    # CRITICAL: Always use 0.0.0.0 on Render, ignore HOST env var
     if is_render:
+        host = "0.0.0.0"
         debug = False
         print("🚀 Modo producción detectado (Render)")
+        print(f"🔧 Forzando binding a 0.0.0.0 para acceso público")
     else:
+        host = os.getenv("HOST", "0.0.0.0")
         debug = os.getenv("DEBUG_MODE", "False") == "True"
     
-    print(f"🌐 Servidor: http://{host}:{port}")
+    port = int(os.getenv("PORT", "8000"))
+    
+    print(f"🌐 Host: {host}")
+    print(f"🔌 Puerto: {port}")
     print(f"📚 Documentación API: http://{host}:{port}/docs")
-    print(f"🔧 Modo debug: {'Activado' if debug else 'Desactivado'}")
+    print(f"🐛 Modo debug: {'Activado' if debug else 'Desactivado'}")
     print("\n💡 Presiona Ctrl+C para detener el servidor\n")
     print("="*70 + "\n")
+    
+    # DEBUG: Confirm values before starting uvicorn
+    print(f"🔍 DEBUG: host='{host}', port={port}, reload={debug}")
+    print(f"🔍 DEBUG: RENDER env var = '{os.getenv('RENDER', 'NOT SET')}'")
+    print(f"🔍 DEBUG: Starting uvicorn with host={host}\n")
     
     # Iniciar servidor
     import uvicorn
