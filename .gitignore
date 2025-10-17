@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Entorno
+.env
+.env.local
+
+# Base de datos
+*.db
+*.sqlite
+*.sqlite3
+
+# Archivos subidos y generados
+uploads/*
+!uploads/.gitkeep
+generated_docs/*
+!generated_docs/.gitkeep
+
+# Logs
+*.log
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporales
+*.tmp
+*.bak
+*.swp
+
+

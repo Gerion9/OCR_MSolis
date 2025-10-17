@@ -1,0 +1,71 @@
+# Configuración para desplegar en Render.com
+# https://render.com
+#
+# Instrucciones:
+# 1. Crear cuenta en https://render.com
+# 2. Conectar tu repositorio de GitHub
+# 3. Render detectará automáticamente este archivo
+# 4. Configurar las variables de entorno en el dashboard
+#
+# Variables de entorno requeridas:
+# - GEMINI_API_KEY: Tu API key de Google Gemini
+
+services:
+  # Servicio web principal (FastAPI)
+  - type: web
+    name: declaration-letter-online
+    env: python
+    region: oregon # O la región más cercana a ti
+    plan: free # Puedes cambiar a 'starter' ($7/mes) para mejor rendimiento
+    branch: main # O tu rama principal
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python start_server.py"
+    healthCheckPath: /health
+    
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"
+      
+      - key: HOST
+        value: "0.0.0.0"
+      
+      - key: PORT
+        value: "8000"
+      
+      - key: DEBUG_MODE
+        value: "False"
+      
+      - key: GEMINI_API_KEY
+        sync: false # Debes configurar esto manualmente en el dashboard
+      
+      - key: GEMINI_MODEL
+        value: "gemini-1.5-pro"
+      
+      - key: GEMINI_TIMEOUT
+        value: "300"
+      
+      - key: DATABASE_URL
+        value: "sqlite:///./declaration_letters.db"
+      
+      - key: MAX_FILE_SIZE_MB
+        value: "10"
+    
+    # Disco persistente para la base de datos y archivos generados
+    disk:
+      name: declaration-data
+      mountPath: /opt/render/project/src
+      sizeGB: 1 # 1GB de almacenamiento (suficiente para comenzar)
+    
+    # Autoscaling (solo en planes pagos)
+    # autoDeploy: true
+    
+    # Health checks
+    healthCheckPath: /health
+    
+  # Si necesitas un servicio de base de datos PostgreSQL en el futuro:
+  # - type: pdb
+  #   name: declaration-db
+  #   plan: free
+  #   databaseName: declaration_letters
+  #   databaseUser: admin
+

@@ -1,0 +1,48 @@
+# ⚠️ IMPORTANTE: Esta aplicación NO es compatible con Netlify
+#
+# Esta es una aplicación FastAPI (backend Python) que requiere:
+# - Servidor Python ejecutándose continuamente
+# - Base de datos SQLite persistente
+# - Procesamiento de archivos
+# - Llamadas a API de Google Gemini
+#
+# Netlify solo soporta sitios estáticos y funciones serverless limitadas.
+#
+# 📌 SOLUCIONES RECOMENDADAS:
+#
+# 1. RENDER (Recomendado - Gratis para comenzar)
+#    - Soporta aplicaciones Python completas
+#    - Base de datos incluida
+#    - Deploy automático desde GitHub
+#    - https://render.com
+#
+# 2. RAILWAY (Muy fácil de usar)
+#    - Deploy en minutos
+#    - $5/mes después del tier gratuito
+#    - https://railway.app
+#
+# 3. HEROKU (Clásico)
+#    - Bien documentado
+#    - Gratis hasta cierto punto
+#    - https://heroku.com
+#
+# 4. PythonAnywhere (Específico para Python)
+#    - Diseñado para aplicaciones Python
+#    - Plan gratuito disponible
+#    - https://pythonanywhere.com
+#
+# 📖 Ver DEPLOYMENT_GUIDE.md para instrucciones paso a paso
+
+# Si intentas desplegar aquí de todos modos (NO funcionará):
+[build]
+  ignore = "exit 1"  # Detiene el build inmediatamente
+  
+[build.environment]
+  PYTHON_VERSION = "3.11"
+  
+# Mensaje de error personalizado
+[[redirects]]
+  from = "/*"
+  to = "/404.html"
+  status = 404
+

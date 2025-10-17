@@ -1,0 +1,322 @@
+<declaration_guide>
+  <title>Declaration Outline</title>
+
+  <section id="background">
+    <heading>BACKGROUND</heading>
+    <instructions>This section should contain the following details</instructions>
+    <details>
+      <detail>Client’s full name, date of birth, place of birth, and current age.</detail>
+      <detail>Client’s upbringing, whether they grew up with both parents, had siblings, and their family relationship.</detail>
+      <detail>Socio-economic conditions while growing up, education level, and any early work history to support the family.</detail>
+      <detail>History of abuse, hardship, or victimization in their home country, including violence from family or close individuals, and any discrimination suffered.</detail>
+      <detail>Prevalence of crime or violence in their surroundings during upbringing and the role of law enforcement (protective or harmful).</detail>
+      <detail>Any relevant life events or milestones (e.g., marriage, birth of a child) with corresponding dates and places.</detail>
+    </details>
+  </section>
+
+  <section id="coming_to_us">
+    <heading>COMING TO THE UNITED STATES</heading>
+    <instructions>This section should contain the following details</instructions>
+    <details>
+      <detail>The primary motivation for deciding to enter the United States.</detail>
+      <detail>A detailed, chronological account of their journey to the United States, including dates, stopover locations, and modes of transportation.</detail>
+    </details>
+  </section>
+
+  <section id="trafficking_experience">
+    <heading>TRAFFICKING EXPERIENCE</heading>
+    <instructions>This section should contain the following details. The three subsections are for instructional purposes only; do not use them as subheadings in the final document.</instructions>
+
+    <subsection id="end_purpose" step="1">
+      <title>End/Purpose (Step 1 in the Objective Standards)</title>
+      <analysis_question>Why did the trafficker subject the victim to the trafficking situation?</analysis_question>
+      <guidance>The answer should shed light on the trafficker’s intent and can be established through the forced labor the victim had to perform against their will. Include the following:</guidance>
+      <questions>
+        <question>What specific work, labor, or services did the trafficker force the victim to perform? (List examples)</question>
+        <question>How many hours per day did the trafficker force the victim to perform that work?</question>
+        <question>How many days per week did the trafficker force the victim to perform that work?</question>
+      </questions>
+    </subsection>
+
+    <subsection id="means" step="2">
+      <title>Means (Step 2 in the Objective Standards)</title>
+      <analysis_question>How did the trafficker keep the victim in the trafficking situation?</analysis_question>
+      <guidance>This is where the concepts of force, fraud, and coercion come into play. Choose from the following actions that may constitute coercion and include specific examples in the text.</guidance>
+      <coercion_methods>
+        <method type="Threats">
+          <example>Harm against the victim or family.</example>
+          <example>Exposing or shaming the victim.</example>
+          <example>Reporting to police or immigration.</example>
+        </method>
+        <method type="Intimidation">
+          <example>Harms other victims, children, or pets.</example>
+          <example>Displays or uses weapons.</example>
+          <example>Destroys property.</example>
+          <example>Lies about police involvement in trafficking.</example>
+        </method>
+        <method type="Emotional_Abuse">
+          <example>Humiliates in front of others.</example>
+          <example>Calls names.</example>
+          <example>Plays mind games.</example>
+          <example>Makes victim feel guilty or blames victim for the situation.</example>
+          <example>Convinces the victim that only the trafficker cares about them.</example>
+        </method>
+        <method type="Isolation">
+          <example>Keeps victim confined.</example>
+          <example>Accompanies/escorts victim to public places.</example>
+          <example>Creates distrust of police or others.</example>
+          <example>Moves victim to different locations.</example>
+          <example>Doesn’t allow the victim to learn English or go to school.</example>
+          <example>Denies access to children, family, and friends.</example>
+        </method>
+        <method type="Denying_Blaming_Minimizing">
+          <example>Makes light of abuse or exploitation.</example>
+          <example>Denies that anything illegal or exploitative is occurring.</example>
+          <example>Places blame on the victim for the trafficking situation.</example>
+        </method>
+        <method type="Sexual_Abuse">
+          <example>Uses sexual assault as punishment or means of control.</example>
+          <example>Forces victim to have sex with strangers.</example>
+          <example>Treats victim as an object for monetary gain.</example>
+          <example>Normalizes sexual violence and selling sex.</example>
+        </method>
+        <method type="Physical_Abuse">
+          <example>Shoves, slaps, hits, punches, kicks, strangles.</example>
+          <example>Burns, brands, tattoos.</example>
+          <example>Denies food and/or water.</example>
+          <example>Exposes victim to harmful chemicals.</example>
+          <example>Forces pregnancy termination.</example>
+          <example>Induces drug addiction as a means of control.</example>
+        </method>
+        <method type="Using_Privilege">
+          <example>Treats victim like a servant.</example>
+          <example>Uses gender, age, or nationality to suggest superiority.</example>
+          <example>Uses certain victims to control others.</example>
+          <example>Hides or destroys important documents.</example>
+        </method>
+        <method type="Economic_Abuse">
+          <example>Creates debt that can never be repaid.</example>
+          <example>Takes money earned.</example>
+          <example>Prohibits access to finances.</example>
+          <example>Limits resources to a small allowance.</example>
+        </method>
+      </coercion_methods>
+    </subsection>
+
+    <subsection id="action_process" step="3">
+      <title>Action/Process (Step 3 in the Objective Standards)</title>
+      <analysis_question>How did the victim end up in the trafficking situation?</analysis_question>
+      <guidance>The key here is to understand how the actions or words the trafficker employed induced the victim into the trafficking situation.</guidance>
+      <questions>
+        <question>Who forced the victim to render labor, services, or work against their will?</question>
+        <question>How did the victim meet or come into contact with this trafficker?</question>
+        <question>When did the forced work, labor, or services begin?</question>
+        <question>Where did the forced work, labor, or services begin?</question>
+        <question>How did the forced work, labor, or services begin? (What did the trafficker say or do? What promises were made?)</question>
+      </questions>
+    </subsection>
+  </section>
+
+  <section id="life_after_trafficking" step="4">
+    <heading>LIFE AFTER TRAFFICKING (Step 4 in the Objective Standards)</heading>
+    <details>
+      <detail>How the victim escaped their trafficking situation (dates, locations, etc.).</detail>
+      <detail>The current impact of their trafficking victimization (physical, emotional, psychological ramifications).</detail>
+      <detail>Whether the victim is accessing restorative services.</detail>
+      <detail>Whether the victim is in the U.S. to avail themselves of judicial protection and cooperate with law enforcement.</detail>
+      <detail>Whether the victim is in the U.S. because they lack the means to return home.</detail>
+      <detail>Whether the victim cannot leave the U.S. due to fear of retaliation from traffickers.</detail>
+    </details>
+  </section>
+
+  <section id="reporting">
+    <heading>REPORTING</heading>
+    <details>
+      <detail>The name of the Law Enforcement Agency (LEA) to which the trafficking was reported.</detail>
+      <detail>The date of the report to the LEA.</detail>
+      <detail>A brief explanation of the client’s willingness to cooperate with the investigation and prosecution.</detail>
+      <detail>If applicable, a brief explanation for any delay in reporting to the LEA.</detail>
+    </details>
+  </section>
+
+  <section id="extreme_hardship" step="5">
+    <heading>EXTREME HARDSHIP (Step 5 in the Objective Standards)</heading>
+    <instructions>This section should include a brief explanation for each of the following factors that weigh in favor of the client.</instructions>
+    <factor_categories>
+      <category name="Traditional_Factors">
+        <factor>Age, at the time of entry and at the time of filing.</factor>
+        <factor>Family and community ties in the US and in the home country.</factor>
+        <factor>Length of residence in the US.</factor>
+        <factor>Employment history in the US.</factor>
+        <factor>Health and availability/quality of required treatment in the home country.</factor>
+        <factor>Political and economic conditions in the home country.</factor>
+        <factor>Other means of adjusting status in the US.</factor>
+        <factor>Immigration history.</factor>
+      </category>
+      <category name="Trafficking_Factors">
+        <factor>Age, maturity, and personal circumstances.</factor>
+        <factor>Physical/psychological illness that necessitates care not reasonably available in the home country.</factor>
+        <factor>Nature/extent of physical/psychological consequences of having been a victim.</factor>
+        <factor>Impact of loss to the US courts/criminal justice system.</factor>
+        <factor>Reasonable expectation that laws, social practices, or customs in the home country would penalize the victim.</factor>
+        <factor>Likelihood of re-victimization and the ability/willingness of foreign authorities to protect the applicant.</factor>
+        <factor>Likelihood that the trafficker would severely harm the applicant in the home country.</factor>
+        <factor>Likelihood that civil unrest/armed conflict would threaten the applicant’s safety.</factor>
+      </category>
+    </factor_categories>
+    <example_logic>
+      <example>For age, it’s harder for an older applicant to uproot and move back than for a younger applicant.</example>
+      <example>For family ties, it’s harder for an applicant whose entire family is in the US to leave than one whose family is in their home country.</example>
+    </example_logic>
+  </section>
+
+  <section id="inadmissibilities">
+    <heading>INADMISSIBILITIES</heading>
+    <details>
+      <detail>A brief explanation of the circumstances surrounding each inadmissibility the client may have triggered.</detail>
+      <detail>A brief prayer for relief asking USCIS to waive the inadmissibilities and approve the T application.</detail>
+    </details>
+    <examples>
+      <example_statement>"I entered the United States without inspection on January 1, 2000; and have remained here without status since."</example_statement>
+      <example_statement>"I have worked in the United States without authorization since January 1, 2000."</example_statement>
+      <example_statement>"I’m deeply regretful of the mistakes I made in the past and respectfully request that you approve my petition and waiver."</example_statement>
+    </examples>
+    <template>
+      <title>Inadmissibility Template</title>
+      <text>I entered without inspection on DATE and have remained here without status since, pursuant to INA § 212(a)(6)(A). (unlawful presence). I may be subject to a (3, 10, or permanent bar) because I entered the United States without inspection or admission on DATE, departed on DATE, and re-entered on DATE, pursuant to (INA § 212(a)(9)(B)(i)(I), INA § 212(a)(9)(B)(i)(II), INA § 212(a)(9)(C)(i), respectively) (bar due to reentry after unlawful presence). I may be subject to a permanent bar.</text>
+    </template>
+  </section>
+
+  <declaration_questionnaire>
+    <title>DECLARATION IN SUPPORT OF HIS/HER APPLICATION FOR T NONIMMIGRANT STATUS</title>
+    <topic id="background">
+      <heading>BACKGROUND</heading>
+      <subtopic name="Personal_Information">
+        <question>Full name:</question>
+        <question>Date of birth:</question>
+        <question>Place of birth:</question>
+        <question>Current age:</question>
+      </subtopic>
+      <subtopic name="Family_History">
+        <question>Who did you grow up with?</question>
+        <question>How many siblings do you have?</question>
+        <question>How would you describe your relationship with your family during childhood?</question>
+        <question>Did you suffer any type of physical, verbal, or sexual abuse during these stages?</question>
+      </subtopic>
+      <subtopic name="Economic_and_Educational">
+        <question>What was the economic situation in your home while growing up?</question>
+        <question>Did you have to work from a young age? What kind of jobs and why?</question>
+        <question>Were you able to study? Up to what level?</question>
+      </subtopic>
+      <subtopic name="History_of_Violence">
+        <question>Did you or someone close to you suffer violence or discrimination? Who and how?</question>
+        <question>How was security in your community? Did the police help, or were they a threat?</question>
+      </subtopic>
+      <subtopic name="Important_Events">
+        <question>Have you married or lived with a partner? When and with whom?</question>
+        <question>Do you have children? How many? Where and when were they born?</question>
+        <question>Who do you currently live with and where?</question>
+      </subtopic>
+    </topic>
+    <topic id="coming_to_us">
+      <heading>COMING TO THE UNITED STATES</heading>
+      <subtopic name="Entries">
+        <question>How many times have you entered the United States in total?</question>
+        <question>During any of those entries, did you have contact with immigration officials? (If yes: when, what happened?)</question>
+        <question>If no: Did you enter undetected? How did that crossing happen?</question>
+      </subtopic>
+      <subtopic name="Reasons_for_Emigrating">
+        <question>Why did you decide to leave your country?</question>
+        <question>What were your personal, family, or economic conditions at that time?</question>
+        <question>Were you fleeing any situation of violence, threat, or abuse?</question>
+      </subtopic>
+      <subtopic name="Initial_Agreement">
+        <question>What was the agreement you made with the person who would help you cross?</question>
+        <question>How much did they say the crossing would cost?</question>
+        <question>What did they promise that payment would include?</question>
+        <question>Did they promise it would be a safe trip?</question>
+      </subtopic>
+      <subtopic name="Forced_Activities">
+        <question>Were you forced to carry backpacks, packages, or substances?</question>
+        <question>Were you ordered to do activities like watching, guiding others, cooking, cleaning, etc.?</question>
+        <question>Were you told that if you didn’t obey, they would abandon or harm you?</question>
+        <question>Why couldn’t you refuse to perform those tasks?</question>
+      </subtopic>
+      <subtopic name="Travel_Details">
+        <question>When and where did you enter the U.S.?</question>
+      </subtopic>
+    </topic>
+    <topic id="trafficking_experience">
+      <heading>TRAFFICKING EXPERIENCE</heading>
+      <subtopic name="Situation_Start">
+        <question>Who was the person or group that deprived you of your freedom or forced you to work?</question>
+        <question>Name of trafficker:</question>
+        <question>How did you meet or come into contact with them?</question>
+        <question>When and where did the trafficking situation begin?</question>
+        <question>How did that situation start? What did they say or do?</question>
+        <question>Did they make any promise that made you trust them?</question>
+      </subtopic>
+      </topic>
+    <topic id="escaping_trafficking">
+      <heading>ESCAPING FROM TRAFFICKING</heading>
+      <question>What finally allowed you to leave that situation?</question>
+      <question>Were you told not to report what happened?</question>
+      <question>Were you able to leave on your own or did someone help you escape?</question>
+      <question>Did you receive support after escaping?</question>
+      <question>What happened to the traffickers after you left?</question>
+      <question>Did they try to contact you or your family? Do they know where you are?</question>
+      <question>Do you feel safe now? Why or why not?</question>
+    </topic>
+    <topic id="life_after_trafficking_impact">
+      <heading>LIFE AFTER TRAFFICKING</heading>
+      <question>How has what you experienced impacted your life?</question>
+      <question>Depression: Do you feel sad or hopeless often?</question>
+      <question>Anxiety: Do you feel constant nervousness or fear? Panic attacks?</question>
+      <question>PTSD: Do you have intrusive memories, nightmares, flashbacks?</question>
+      <question>Sleep: Nightmares, insomnia?</question>
+      <question>Paranoia: Do you still fear your traffickers may find you?</question>
+      <question>Relationships: Difficulty trusting people? Avoiding others?</question>
+      <question>Self-esteem: Do you feel worthless or blame yourself?</question>
+      <question>Physical effects: Ongoing pain, health conditions?</question>
+      <question>Psychological help: Have you sought therapy or support?</question>
+    </topic>
+    <topic id="reporting_to_law_enforcement">
+      <heading>REPORTING TO LAW ENFORCEMENT</heading>
+      <question>In the past, you did not report your trafficking situation. Was it because it was too painful, fear of the trafficker, fear of authorities, or all three?</question>
+      <question>Currently, would you be willing to cooperate with authorities if they needed your help?</question>
+    </topic>
+    <topic id="fbi_records">
+      <heading>FBI RECORDS</heading>
+      <question>Have you ever had problems with the police or been arrested?</question>
+      <question>When and where did it happen? What were the charges?</question>
+      <question>What was the outcome of the case?</question>
+      <question>How do you feel about it now?</question>
+      <question>What have you done since then to change your life? Do you feel remorseful?</question>
+    </topic>
+    <topic id="hardship_outside_us">
+      <heading>HARDSHIP I WOULD SUFFER OUTSIDE THE UNITED STATES</heading>
+      <question>Age and personal circumstances: How old were you when you last entered? How old are you now? Would it be difficult to start over?</question>
+      <question>Family ties and support networks: Who are your relatives in the U.S.? Do you have family/support in your home country?</question>
+      <question>Length of residence in the U.S.: Since when have you lived here? What have you built?</question>
+      <question>Work history in the U.S.: Have you worked here? What type of work? Who do you support?</question>
+      <question>Health consequences: Do you have medical/psychological conditions? Do you receive treatment here? Could you continue it in your country?</question>
+      <question>Conditions in your country: Would you be safe? Could you find work? Is there crime/extortion?</question>
+      <question>Risks if you return: Do you fear revenge from traffickers? Would your authorities protect you?</question>
+      <question>Social stigma: Is there stigma against trafficking victims in your country?</question>
+      <question>Community activities: Do you belong to any community organizations in the U.S.?</question>
+      <question>Goals and dreams: What projects or dreams are you building in the U.S.?</question>
+    </topic>
+  </declaration_questionnaire>
+
+  <signature_block>
+    <instructions>The signature block must appear at the end of the declaration, without Markdown heading format, and without paragraph numbering. Format exactly as follows:</instructions>
+    <format>
+______________________________________
+[FULL NAME]
+
+______________
+Date
+    </format>
+  </signature_block>
+
+</declaration_guide>
