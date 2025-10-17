@@ -36,6 +36,7 @@ def main():
         print("   Obténla en: https://makersuite.google.com/app/apikey\n")
     
     # Render requires binding to 0.0.0.0 for public access
+    # Reference: https://render.com/docs/web-services#port-binding
     # CRITICAL: Always use 0.0.0.0 on Render, ignore HOST env var
     if is_render:
         host = "0.0.0.0"
@@ -46,6 +47,8 @@ def main():
         host = os.getenv("HOST", "0.0.0.0")
         debug = os.getenv("DEBUG_MODE", "False") == "True"
     
+    # Render sets PORT automatically (default: 10000)
+    # We fallback to 8000 for local development
     port = int(os.getenv("PORT", "8000"))
     
     print(f"🌐 Host: {host}")
