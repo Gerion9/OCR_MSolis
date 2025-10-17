@@ -660,7 +660,8 @@ async def preview_cover_letter(
 if __name__ == "__main__":
     import uvicorn
     
-    host = os.getenv("HOST", "localhost")
+    # Use 0.0.0.0 for production compatibility
+    host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", "8000"))
     
     print("\n" + "="*60)
@@ -674,7 +675,7 @@ if __name__ == "__main__":
         "backend.main:app",
         host=host,
         port=port,
-        reload=os.getenv("DEBUG_MODE", "True") == "True"
+        reload=os.getenv("DEBUG_MODE", "False") == "True"
     )
 
 

@@ -31,9 +31,18 @@ def main():
         print("   Obténla en: https://makersuite.google.com/app/apikey\n")
     
     # Render requires binding to 0.0.0.0 for public access
+    # Force production settings on Render (detected by RENDER env var)
+    is_render = os.getenv("RENDER", "false").lower() == "true"
+    
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", "8000"))
-    debug = os.getenv("DEBUG_MODE", "False") == "True"
+    
+    # Force debug=False on Render, even if DEBUG_MODE is set
+    if is_render:
+        debug = False
+        print("🚀 Modo producción detectado (Render)")
+    else:
+        debug = os.getenv("DEBUG_MODE", "False") == "True"
     
     print(f"🌐 Servidor: http://{host}:{port}")
     print(f"📚 Documentación API: http://{host}:{port}/docs")
