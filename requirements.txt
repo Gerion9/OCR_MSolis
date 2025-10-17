@@ -31,7 +31,7 @@ pydantic-settings==2.6.1
 # Manejo de archivos
 PyPDF2==3.0.1
 
-# CORS y middleware
-starlette==0.41.3
+# CORS y middleware (starlette is auto-installed by fastapi)
+# starlette will be installed automatically with the correct version
 
 
