@@ -348,6 +348,91 @@ async function uploadFile(file) {
     }
 }
 
+// ==========================================
+// FUNCIONES AUXILIARES
+// ==========================================
+
+// Función para extraer el nombre del afectado del Declaration Letter
+function extractApplicantName(markdownContent) {
+    // Buscar patrones comunes para extraer el nombre (solo 2-5 palabras)
+    
+    // Patrón 1: "I, [Nombre Apellido], declare..." o "I, [Nombre Apellido Apellido], declare..."
+    let match = markdownContent.match(/I,\s+([A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*){1,4}),\s+(?:declare|solemnly|state)/i);
+    if (match) return match[1].trim();
+    
+    // Patrón 2: "My name is [Nombre Apellido]"
+    match = markdownContent.match(/My name is\s+([A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*){1,4})(?:\.|,|\s+and)/i);
+    if (match) return match[1].trim();
+    
+    // Patrón 3: Buscar en el encabezado "DECLARATION OF [Nombre Apellido]"
+    match = markdownContent.match(/DECLARATION OF\s+([A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*){1,4})/i);
+    if (match) return match[1].trim();
+    
+    // Patrón 4: "I am [Nombre Apellido]"
+    match = markdownContent.match(/I am\s+([A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*){1,4})(?:\.|,|\s+and)/i);
+    if (match) return match[1].trim();
+    
+    // Patrón 5: Buscar nombre después de "Re:" o "RE:"
+    match = markdownContent.match(/RE?:\s*(?:Application|Petition|Declaration|Case)\s+(?:of|for)\s+([A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*){1,4})/i);
+    if (match) return match[1].trim();
+    
+    // Si no se encuentra, retornar "Applicant"
+    return "Applicant";
+}
+
+// Función para actualizar el título del panel con el nombre del afectado
+function updatePanelTitle(documentId, applicantName) {
+    const panel = document.querySelector(`.document-panel[data-document-id="${documentId}"]`);
+    if (!panel) return;
+    
+    const titleElement = panel.querySelector('.document-panel-title');
+    if (titleElement) {
+        titleElement.textContent = `Cover and Declaration Letter [${applicantName}]`;
+    }
+    
+    // También actualizar el tab con SOLO el nombre del afectado
+    const tab = document.querySelector(`.tab-button[data-document-id="${documentId}"]`);
+    if (tab) {
+        const tabTitle = tab.querySelector('.document-tab-title');
+        if (tabTitle) {
+            tabTitle.textContent = applicantName;
+        }
+    }
+}
+
+// Función para agregar botones de descarga a la sección de descarga
+function addDownloadButtonToHeader(documentId, documentType, label) {
+    const panel = document.querySelector(`.document-panel[data-document-id="${documentId}"]`);
+    if (!panel) return;
+    
+    const downloadSection = panel.querySelector('.document-download-section');
+    const buttonsContainer = panel.querySelector('.download-buttons-container');
+    if (!downloadSection || !buttonsContainer) return;
+    
+    // Verificar si el botón ya existe
+    const existingBtn = buttonsContainer.querySelector(`.download-${documentType}-btn-header`);
+    if (existingBtn) return;
+    
+    // Mostrar la sección de descarga
+    downloadSection.classList.remove('hidden');
+    
+    const downloadBtn = document.createElement('button');
+    downloadBtn.className = `btn btn-primary download-${documentType}-btn-header`;
+    downloadBtn.onclick = () => downloadDocument(documentId, documentType);
+    downloadBtn.innerHTML = `
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+            <path d="M10 3V13M10 13L14 9M10 13L6 9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        ${label}
+    `;
+    
+    buttonsContainer.appendChild(downloadBtn);
+}
+
+// ==========================================
+// FUNCIONES DE PROCESAMIENTO
+// ==========================================
+
 async function processDocumentFromQueue(item) {
     try {
         // Actualizar estado
@@ -412,9 +497,14 @@ async function processDocumentStream(documentId, fileName) {
                     // Asegurar que todo el contenido se muestre
                     updateDocumentContent(documentId, 'declaration', fullContent);
                     
+                    // Extraer nombre del afectado y actualizar título del panel
+                    const applicantName = extractApplicantName(fullContent);
+                    updatePanelTitle(documentId, applicantName);
+                    
                     // Guardar en estado
                     appState.processedDocuments[documentId] = {
                         fileName: fileName,
+                        applicantName: applicantName,
                         declarationContent: fullContent,
                         coverLetterContent: null,
                         generatedFilename: data.filename
@@ -423,10 +513,17 @@ async function processDocumentStream(documentId, fileName) {
                     // Habilitar botones de Declaration (Download y Regenerate)
                     enableDeclarationButtons(documentId);
                     
-                    // Habilitar botón de Cover Letter
-                    enableCoverLetterButton(documentId);
-                    
-                    resolve();
+                    // Generar Cover Letter automáticamente después de completar Declaration Letter
+                    // Esperamos a que se complete el Cover Letter antes de resolver
+                    generateCoverLetterAutomatically(documentId)
+                        .then(() => {
+                            resolve();
+                        })
+                        .catch((coverError) => {
+                            console.error('Error generating cover letter:', coverError);
+                            // Aún así resolvemos para no bloquear el procesamiento de otros documentos
+                            resolve();
+                        });
                 } else if (data.type === 'error' || data.error) {
                     eventSource.close();
                     hideLoadingSpinner(documentId);
@@ -526,14 +623,12 @@ function enableDeclarationButtons(documentId) {
     const panel = document.querySelector(`.document-panel[data-document-id="${documentId}"]`);
     if (!panel) return;
     
-    const downloadBtn = panel.querySelector('.download-declaration-btn');
     const regenerateBtn = panel.querySelector('.regenerate-btn');
     
-    if (downloadBtn) {
-        downloadBtn.disabled = false;
-        downloadBtn.style.opacity = '1';
-        downloadBtn.style.cursor = 'pointer';
-    }
+    // Agregar botón de descarga al header superior derecho
+    addDownloadButtonToHeader(documentId, 'declaration', 'Download Declaration');
+    
+    // Habilitar botón de regenerar
     if (regenerateBtn) {
         regenerateBtn.disabled = false;
         regenerateBtn.style.opacity = '1';
@@ -557,7 +652,7 @@ function createDocumentTab(documentId, fileName) {
     tabButton.className = 'tab-button';
     tabButton.dataset.documentId = documentId;
     tabButton.innerHTML = `
-        ${fileName}
+        <span class="document-tab-title">Processing...</span>
         <span class="tab-close" onclick="closeDocumentTab(${documentId}, event)">✕</span>
     `;
     tabButton.addEventListener('click', () => switchToDocument(documentId));
@@ -628,17 +723,24 @@ function initializeDocumentPanel(documentId, fileName) {
     
     panel.innerHTML = `
         <div class="document-panel-header">
-            <div>
-                <div class="document-panel-title">${fileName}</div>
+            <div class="document-panel-header-left">
+                <div class="document-panel-title">Cover and Declaration Letter [Processing...]</div>
                 <div class="document-panel-subtitle">Generated documents</div>
             </div>
-            <div class="document-type-tabs">
-                <button class="document-type-tab active" onclick="switchDocumentType(${documentId}, 'declaration')">
-                    Declaration Letter
-                </button>
-                <button class="document-type-tab" onclick="switchDocumentType(${documentId}, 'cover')" disabled>
-                    Cover Letter
-                </button>
+            <div class="document-panel-header-right">
+                <div class="document-type-tabs">
+                    <button class="document-type-tab active" onclick="switchDocumentType(${documentId}, 'declaration')">
+                        Declaration Letter
+                    </button>
+                    <button class="document-type-tab" onclick="switchDocumentType(${documentId}, 'cover')" disabled>
+                        Cover Letter
+                    </button>
+                </div>
+                <div class="document-download-section hidden">
+                    <div class="download-buttons-container">
+                        <!-- Botones de descarga se agregarán aquí dinámicamente -->
+                    </div>
+                </div>
             </div>
         </div>
         <div class="document-panel-body">
@@ -651,23 +753,11 @@ function initializeDocumentPanel(documentId, fileName) {
         </div>
         <div class="document-panel-footer">
             <div class="action-buttons">
-                <button class="btn btn-primary download-declaration-btn" onclick="downloadDocument(${documentId}, 'declaration')" disabled>
-                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                        <path d="M10 3V13M10 13L14 9M10 13L6 9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                    </svg>
-                    Download Declaration
-                </button>
                 <button class="btn btn-secondary regenerate-btn" onclick="regenerateDocument(${documentId})" disabled>
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <path d="M17 10C17 13.866 13.866 17 10 17C6.134 17 3 13.866 3 10C3 6.134 6.134 3 10 3C11.848 3 13.536 3.752 14.778 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            </svg>
-                    Regenerate
-                </button>
-                <button class="btn btn-success generate-cover-btn" onclick="generateCoverLetter(${documentId})" disabled>
                     <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                        <path d="M9 2C9 1.44772 9.44772 1 10 1H14C14.5523 1 15 1.44772 15 2V5H18C18.5523 5 19 5.44772 19 6V18C19 18.5523 18.5523 19 18 19H6C5.44772 19 5 18.5523 5 18V6C5 5.44772 5.44772 5 6 5H9V2Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-                    Generate Cover Letter
+                        <path d="M17 10C17 13.866 13.866 17 10 17C6.134 17 3 13.866 3 10C3 6.134 6.134 3 10 3C11.848 3 13.536 3.752 14.778 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                    Regenerate
                 </button>
             </div>
         </div>
@@ -728,14 +818,28 @@ function convertMarkdownToHTML(markdownContent) {
     return processedLines.join('\n');
 }
 
-function enableCoverLetterButton(documentId) {
+// Función para generar Cover Letter automáticamente (sin intervención del usuario)
+async function generateCoverLetterAutomatically(documentId) {
     const panel = document.querySelector(`.document-panel[data-document-id="${documentId}"]`);
     if (!panel) return;
     
     const coverTab = panel.querySelector('.document-type-tab:nth-child(2)');
-    const coverBtn = panel.querySelector('.generate-cover-btn');
+    const coverContent = panel.querySelector('.cover-content');
     
-    if (coverBtn) coverBtn.disabled = false;
+    // Cambiar a tab de Cover Letter
+    switchDocumentType(documentId, 'cover');
+    coverTab.disabled = false;
+    
+    // Mostrar mensaje de generación
+    coverContent.innerHTML = '<p style="color: #6b7280; font-style: italic;">Generating Cover Letter automatically...</p>';
+    
+    try {
+        // Generar con streaming
+        await generateCoverLetterStream(documentId);
+        
+    } catch (error) {
+        showError(`Error generating Cover Letter: ${error.message}`);
+    }
 }
 
 function switchDocumentType(documentId, type) {
@@ -893,48 +997,6 @@ async function regenerateDocumentStream(documentId) {
 
 window.regenerateDocument = regenerateDocument;
 
-async function generateCoverLetter(documentId) {
-    const panel = document.querySelector(`.document-panel[data-document-id="${documentId}"]`);
-    if (!panel) return;
-    
-    const coverTab = panel.querySelector('.document-type-tab:nth-child(2)');
-    const coverContent = panel.querySelector('.cover-content');
-    const generateBtn = panel.querySelector('.generate-cover-btn');
-    
-    // Deshabilitar botón
-    generateBtn.disabled = true;
-    generateBtn.textContent = 'Generating...';
-    
-    // Cambiar a tab de Cover Letter
-    switchDocumentType(documentId, 'cover');
-    coverTab.disabled = false;
-    
-    // Mostrar mensaje de generación
-    coverContent.innerHTML = '<p style="color: #6b7280; font-style: italic;">Generating Cover Letter in real-time...</p>';
-    
-    try {
-        // Generar con streaming
-        await generateCoverLetterStream(documentId);
-        
-        // Restaurar botón
-        generateBtn.disabled = false;
-        generateBtn.innerHTML = `
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <path d="M9 2C9 1.44772 9.44772 1 10 1H14C14.5523 1 15 1.44772 15 2V5H18C18.5523 5 19 5.44772 19 6V18C19 18.5523 18.5523 19 18 19H6C5.44772 19 5 18.5523 5 18V6C5 5.44772 5.44772 5 6 5H9V2Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            Generate Cover Letter
-        `;
-        
-        // Agregar botón de descarga de Cover Letter
-        addCoverLetterDownloadButton(documentId);
-        
-    } catch (error) {
-        showError(`Error generating Cover Letter: ${error.message}`);
-        generateBtn.disabled = false;
-    }
-}
-
-window.generateCoverLetter = generateCoverLetter;
 
 async function generateCoverLetterStream(documentId) {
     return new Promise((resolve, reject) => {
@@ -981,7 +1043,11 @@ async function generateCoverLetterStream(documentId) {
                     // Guardar en estado
                     if (appState.processedDocuments[documentId]) {
                         appState.processedDocuments[documentId].coverLetterContent = fullContent;
+                        appState.processedDocuments[documentId].coverLetterFilename = data.filename;
                     }
+                    
+                    // Agregar botón de descarga del Cover Letter al header
+                    addDownloadButtonToHeader(documentId, 'cover', 'Download Cover Letter');
                     
                     resolve();
                 } else if (data.type === 'error' || data.error) {
@@ -1028,27 +1094,6 @@ function simulateTypingEffectCover(documentId, content) {
     }, 30);
 }
 
-function addCoverLetterDownloadButton(documentId) {
-    const panel = document.querySelector(`.document-panel[data-document-id="${documentId}"]`);
-    if (!panel) return;
-    
-    const footer = panel.querySelector('.document-panel-footer .action-buttons');
-    
-    // Verificar si ya existe el botón
-    if (footer.querySelector('.download-cover-btn')) return;
-    
-    const downloadBtn = document.createElement('button');
-    downloadBtn.className = 'btn btn-primary download-cover-btn';
-    downloadBtn.onclick = () => downloadDocument(documentId, 'cover');
-    downloadBtn.innerHTML = `
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-            <path d="M10 3V13M10 13L14 9M10 13L6 9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            </svg>
-        Download Cover Letter
-    `;
-    
-    footer.insertBefore(downloadBtn, footer.firstChild.nextSibling);
-}
 
 // ==========================================
 // MANEJO DE ERRORES
