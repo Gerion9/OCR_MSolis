@@ -15,8 +15,6 @@
     --primary-light: #3B6275;
     
     --danger-color: #ef4444;
-    --warning-color: #614B30;
-    --warning-bg: #FFC680;
     
     /* Colores de texto */
     --text-primary: #1C2F38;
@@ -113,46 +111,7 @@ body {
 }
 
 /* ==========================================
-   SECCIÓN 2: LEYENDA DE ADVERTENCIA
-   ========================================== */
-
-.warning-section {
-    padding: var(--spacing-xl) 0;
-}
-
-.warning-box {
-    background-color: rgba(255, 196, 125, 0.45);
-    border-left: 4px solid var(--warning-color);
-    border-radius: var(--radius-lg);
-    width: 75%;
-    margin: 0 auto; /* Centra el elemento horizontalmente */
-    padding: var(--spacing-lg);
-    display: flex;
-    gap: var(--spacing-md);
-    box-shadow: var(--shadow-sm);
-}
-
-.warning-icon {
-    width: 48px;
-    height: 48px;
-    flex-shrink: 0;
-}
-
-.warning-content h2 {
-    color: #1A2B33;
-    font-size: 1.25rem;
-    font-weight: 600;
-    margin-bottom: var(--spacing-sm);
-}
-
-.warning-content p {
-    color: #305161;
-    font-size: 0.95rem;
-    line-height: 1.7;
-}
-
-/* ==========================================
-   SECCIÓN 3: SUBIDA DEL ARCHIVO
+   SECCIÓN 2: SUBIDA DEL ARCHIVO
    ========================================== */
 
 .upload-section {
@@ -453,7 +412,7 @@ body {
 }
 
 /* ==========================================
-   SECCIÓN 4: VISUALIZACIÓN
+   SECCIÓN 3: VISUALIZACIÓN
    ========================================== */
 
 .preview-section {
@@ -672,7 +631,22 @@ body {
     padding: var(--spacing-md) var(--spacing-lg);
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: var(--spacing-md);
+}
+
+.document-panel-header-left {
+    flex: 0 0 auto;
+    min-width: 250px;
+}
+
+.document-panel-header-right {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: var(--spacing-sm);
 }
 
 .document-panel-title {
@@ -724,6 +698,23 @@ body {
     border: 1px solid var(--border-color);
     border-top: none;
     padding: var(--spacing-lg);
+}
+
+/* Sección de descarga de documentos */
+.document-download-section {
+    margin-top: var(--spacing-sm);
+}
+
+.document-download-section.hidden {
+    display: none;
+}
+
+.download-buttons-container {
+    display: flex;
+    gap: var(--spacing-sm);
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
 }
 
 .document-panel-footer {
@@ -852,6 +843,16 @@ body {
 .btn:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+}
+
+.btn-sm {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+}
+
+.btn-sm svg {
+    width: 14px;
+    height: 14px;
 }
 
 .btn-primary {
