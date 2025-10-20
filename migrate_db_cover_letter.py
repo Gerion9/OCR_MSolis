@@ -81,4 +81,3 @@ if __name__ == "__main__":
         print("\n⚠ Si la base de datos no existe, será creada automáticamente al iniciar el servidor")
     
     print("="*60)
-
