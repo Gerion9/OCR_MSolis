@@ -426,6 +426,11 @@ function addDownloadButtonToHeader(documentId, documentType, label) {
         ${label}
     `;
     
+    // Si es el botón de Cover Letter, ocultarlo inicialmente (se muestra solo cuando se activa su pestaña)
+    if (documentType === 'cover') {
+        downloadBtn.style.display = 'none';
+    }
+    
     buttonsContainer.appendChild(downloadBtn);
 }
 
@@ -851,14 +856,26 @@ function switchDocumentType(documentId, type) {
         tab.classList.remove('active');
     });
     
+    // Obtener botones de descarga
+    const declarationBtn = panel.querySelector('.download-declaration-btn-header');
+    const coverBtn = panel.querySelector('.download-cover-btn-header');
+    
     if (type === 'declaration') {
         panel.querySelector('.document-type-tab:nth-child(1)').classList.add('active');
         panel.querySelector('.declaration-content').classList.remove('hidden');
         panel.querySelector('.cover-content').classList.add('hidden');
+        
+        // Mostrar solo el botón de Declaration
+        if (declarationBtn) declarationBtn.style.display = 'inline-flex';
+        if (coverBtn) coverBtn.style.display = 'none';
     } else {
         panel.querySelector('.document-type-tab:nth-child(2)').classList.add('active');
         panel.querySelector('.declaration-content').classList.add('hidden');
         panel.querySelector('.cover-content').classList.remove('hidden');
+        
+        // Mostrar solo el botón de Cover Letter
+        if (declarationBtn) declarationBtn.style.display = 'none';
+        if (coverBtn) coverBtn.style.display = 'inline-flex';
     }
 }
 
