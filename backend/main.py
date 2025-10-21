@@ -8,12 +8,15 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+from io import BytesIO
 
 from fastapi import FastAPI, File, UploadFile, HTTPException, Depends
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
+import json
+import asyncio
 
 # Importaciones locales
 from backend.models import (
@@ -26,7 +29,7 @@ from backend.models import (
 )
 from backend.database import DatabaseManager, DocumentRepository, LogRepository
 from backend.ai_processor import create_ai_processor, AIProcessor
-from backend.document_converter import save_docx_to_file
+from backend.document_converter import convert_md_text_to_docx_binary
 
 # Cargar variables de entorno
 from dotenv import load_dotenv
@@ -38,12 +41,10 @@ load_dotenv()
 # Configuración de directorios
 BASE_DIR = Path(__file__).parent.parent
 UPLOAD_FOLDER = BASE_DIR / os.getenv("UPLOAD_FOLDER", "uploads")
-GENERATED_DOCS_FOLDER = BASE_DIR / os.getenv("GENERATED_DOCS_FOLDER", "generated_docs")
 FRONTEND_FOLDER = BASE_DIR / "frontend"
 
 # Crear directorios si no existen
 UPLOAD_FOLDER.mkdir(exist_ok=True)
-GENERATED_DOCS_FOLDER.mkdir(exist_ok=True)
 
 # Configuración de la aplicación
 MAX_FILE_SIZE_MB = int(os.getenv("MAX_FILE_SIZE_MB", "10"))
@@ -93,7 +94,6 @@ else:
 
 # Montar archivos estáticos
 app.mount("/frontend", StaticFiles(directory=str(FRONTEND_FOLDER)), name="frontend")
-app.mount("/generated", StaticFiles(directory=str(GENERATED_DOCS_FOLDER)), name="generated")
 
 
 # ==================== DEPENDENCIAS ====================
@@ -289,21 +289,8 @@ async def process_document(
                 detail="Error al generar la declaration letter. El contenido generado está vacío."
             )
         
-        # Generar archivo DOCX
+        # Generar nombre de archivo (solo para referencia, no se guarda físicamente)
         generated_filename = f"declaration_letter_{document_id}_{uuid.uuid4().hex[:8]}.docx"
-        output_path = GENERATED_DOCS_FOLDER / generated_filename
-        
-        try:
-            if not save_docx_to_file(markdown_content, str(output_path)):
-                raise Exception("save_docx_to_file returned False")
-        except Exception as docx_error:
-            error_msg = f"Error al generar archivo DOCX: {str(docx_error)}"
-            doc_repo.update_document_status(document_id, "error", error_msg)
-            log_repo.create_log(document_id, "error", error_msg)
-            raise HTTPException(
-                status_code=500, 
-                detail="Error al generar el archivo de Word. Por favor, intente nuevamente."
-            )
         
         # Actualizar base de datos
         doc_repo.update_document_content(
@@ -366,6 +353,228 @@ async def regenerate_document(
     return await process_document(request.document_id, db, ai)
 
 
+@app.get("/api/process/{document_id}/stream")
+async def process_document_stream(
+    document_id: int,
+    db: Session = Depends(get_db),
+    ai: AIProcessor = Depends(get_ai_processor)
+):
+    """
+    Procesa un documento y genera la declaration letter con streaming (SSE)
+    
+    Args:
+        document_id: ID del documento a procesar
+        db: Sesión de base de datos
+        ai: Procesador de IA
+    
+    Returns:
+        StreamingResponse con Server-Sent Events
+    """
+    async def event_generator():
+        doc_repo = DocumentRepository(db)
+        log_repo = LogRepository(db)
+        
+        try:
+            # Obtener documento de la base de datos
+            document = doc_repo.get_document(document_id)
+            
+            if not document:
+                yield f"data: {json.dumps({'type': 'error', 'error': 'Documento no encontrado'})}\n\n"
+                return
+            
+            # Actualizar estado a procesando
+            doc_repo.update_document_status(document_id, "processing")
+            
+            # Crear log
+            log_repo.create_log(
+                document_id=document_id,
+                action="process_start",
+                details="Iniciando procesamiento del documento (streaming)"
+            )
+            
+            # Extraer texto del archivo
+            file_path = UPLOAD_FOLDER / document.filename
+            
+            if not file_path.exists():
+                error_msg = "Archivo fuente no encontrado"
+                doc_repo.update_document_status(document_id, "error", error_msg)
+                log_repo.create_log(document_id, "error", error_msg)
+                yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
+                return
+            
+            questionnaire_text = ai.extract_text_from_file(str(file_path))
+            
+            if not questionnaire_text or len(questionnaire_text.strip()) == 0:
+                error_msg = "No se pudo extraer texto del archivo o el archivo está vacío"
+                doc_repo.update_document_status(document_id, "error", error_msg)
+                log_repo.create_log(document_id, "error", error_msg)
+                yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
+                return
+            
+            # Generar declaration letter con streaming
+            full_content = ""
+            try:
+                for chunk in ai.generate_declaration_letter_stream(questionnaire_text):
+                    full_content += chunk
+                    # Enviar chunk al cliente
+                    yield f"data: {json.dumps({'type': 'content', 'chunk': chunk})}\n\n"
+                    await asyncio.sleep(0)  # Permitir que otros tasks se ejecuten
+                
+            except Exception as ai_error:
+                error_msg = f"Error en la API de IA: {str(ai_error)}"
+                doc_repo.update_document_status(document_id, "error", error_msg)
+                log_repo.create_log(document_id, "error", error_msg)
+                yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
+                return
+            
+            if not full_content or len(full_content.strip()) == 0:
+                error_msg = "La IA generó un documento vacío"
+                doc_repo.update_document_status(document_id, "error", error_msg)
+                log_repo.create_log(document_id, "error", error_msg)
+                yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
+                return
+            
+            # Generar nombre de archivo (solo para referencia, no se guarda físicamente)
+            generated_filename = f"declaration_letter_{document_id}_{uuid.uuid4().hex[:8]}.docx"
+            
+            # Actualizar base de datos
+            doc_repo.update_document_content(
+                document_id,
+                full_content,
+                generated_filename
+            )
+            
+            # Crear log
+            log_repo.create_log(
+                document_id=document_id,
+                action="process_complete",
+                details=f"Documento generado: {generated_filename}"
+            )
+            
+            # Enviar evento de completado
+            yield f"data: {json.dumps({'type': 'complete', 'filename': generated_filename})}\n\n"
+            
+        except Exception as e:
+            error_msg = f"Error inesperado: {str(e)}"
+            try:
+                doc_repo.update_document_status(document_id, "error", error_msg)
+                log_repo.create_log(document_id, "error", error_msg)
+            except:
+                pass
+            yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
+
+
+@app.get("/api/generate-cover-letter/{document_id}/stream")
+async def generate_cover_letter_stream(
+    document_id: int,
+    db: Session = Depends(get_db),
+    ai: AIProcessor = Depends(get_ai_processor)
+):
+    """
+    Genera un Cover Letter con streaming (SSE)
+    
+    Args:
+        document_id: ID del documento con el Declaration Letter
+        db: Sesión de base de datos
+        ai: Procesador de IA
+    
+    Returns:
+        StreamingResponse con Server-Sent Events
+    """
+    async def event_generator():
+        doc_repo = DocumentRepository(db)
+        log_repo = LogRepository(db)
+        
+        try:
+            # Obtener documento de la base de datos
+            document = doc_repo.get_document(document_id)
+            
+            if not document:
+                yield f"data: {json.dumps({'type': 'error', 'error': 'Documento no encontrado'})}\n\n"
+                return
+            
+            # Verificar que el Declaration Letter ya haya sido generado
+            if not document.markdown_content:
+                yield f"data: {json.dumps({'type': 'error', 'error': 'El Declaration Letter debe ser generado primero'})}\n\n"
+                return
+            
+            # Crear log
+            log_repo.create_log(
+                document_id=document_id,
+                action="cover_letter_start",
+                details="Iniciando generación de Cover Letter (streaming)"
+            )
+            
+            # Generar Cover Letter con streaming
+            full_content = ""
+            try:
+                for chunk in ai.generate_cover_letter_stream(document.markdown_content):
+                    full_content += chunk
+                    # Enviar chunk al cliente
+                    yield f"data: {json.dumps({'type': 'content', 'chunk': chunk})}\n\n"
+                    await asyncio.sleep(0)  # Permitir que otros tasks se ejecuten
+                
+            except Exception as ai_error:
+                error_msg = f"Error en la API de IA: {str(ai_error)}"
+                log_repo.create_log(document_id, "cover_letter_error", error_msg)
+                yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
+                return
+            
+            if not full_content or len(full_content.strip()) == 0:
+                error_msg = "La IA generó un Cover Letter vacío"
+                log_repo.create_log(document_id, "cover_letter_error", error_msg)
+                yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
+                return
+            
+            # Generar nombre de archivo (solo para referencia, no se guarda físicamente)
+            cover_letter_filename = f"cover_letter_{document_id}_{uuid.uuid4().hex[:8]}.docx"
+            
+            # Actualizar base de datos con el Cover Letter
+            doc_repo.update_cover_letter_content(
+                document_id,
+                full_content,
+                cover_letter_filename
+            )
+            
+            # Crear log
+            log_repo.create_log(
+                document_id=document_id,
+                action="cover_letter_complete",
+                details=f"Cover Letter generado: {cover_letter_filename}"
+            )
+            
+            # Enviar evento de completado
+            yield f"data: {json.dumps({'type': 'complete', 'filename': cover_letter_filename})}\n\n"
+            
+        except Exception as e:
+            error_msg = f"Error inesperado: {str(e)}"
+            try:
+                log_repo.create_log(document_id, "cover_letter_error", error_msg)
+            except:
+                pass
+            yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
+
+
 @app.get("/api/status/{document_id}", response_model=DocumentStatusResponse)
 async def get_document_status(
     document_id: int,
@@ -403,14 +612,14 @@ async def download_document(
     db: Session = Depends(get_db)
 ):
     """
-    Descarga el documento generado
+    Descarga el documento generado (generado on-the-fly en memoria)
     
     Args:
         document_id: ID del documento
         db: Sesión de base de datos
     
     Returns:
-        FileResponse con el archivo DOCX
+        Response con el archivo DOCX generado en memoria
     """
     doc_repo = DocumentRepository(db)
     document = doc_repo.get_document(document_id)
@@ -418,18 +627,24 @@ async def download_document(
     if not document:
         raise HTTPException(status_code=404, detail="Documento no encontrado")
     
-    if not document.generated_filename:
+    if not document.markdown_content:
         raise HTTPException(status_code=400, detail="Documento no procesado aún")
     
-    file_path = GENERATED_DOCS_FOLDER / document.generated_filename
+    # Generar DOCX en memoria
+    try:
+        docx_binary = convert_md_text_to_docx_binary(document.markdown_content)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error al generar archivo DOCX: {str(e)}"
+        )
     
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="Archivo no encontrado")
-    
-    return FileResponse(
-        path=str(file_path),
-        filename=f"declaration_letter.docx",
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    return Response(
+        content=docx_binary,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={
+            "Content-Disposition": f"attachment; filename=declaration_letter.docx"
+        }
     )
 
 
@@ -533,20 +748,8 @@ async def generate_cover_letter(
                 detail="Error al generar el Cover Letter. El contenido generado está vacío."
             )
         
-        # Generar archivo DOCX del Cover Letter
+        # Generar nombre de archivo (solo para referencia, no se guarda físicamente)
         cover_letter_filename = f"cover_letter_{document_id}_{uuid.uuid4().hex[:8]}.docx"
-        output_path = GENERATED_DOCS_FOLDER / cover_letter_filename
-        
-        try:
-            if not save_docx_to_file(cover_letter_markdown, str(output_path)):
-                raise Exception("save_docx_to_file returned False")
-        except Exception as docx_error:
-            error_msg = f"Error al generar archivo DOCX del Cover Letter: {str(docx_error)}"
-            log_repo.create_log(document_id, "cover_letter_error", error_msg)
-            raise HTTPException(
-                status_code=500, 
-                detail="Error al generar el archivo de Word del Cover Letter. Por favor, intente nuevamente."
-            )
         
         # Actualizar base de datos con el Cover Letter
         doc_repo.update_cover_letter_content(
@@ -593,14 +796,14 @@ async def download_cover_letter(
     db: Session = Depends(get_db)
 ):
     """
-    Descarga el Cover Letter generado
+    Descarga el Cover Letter generado (generado on-the-fly en memoria)
     
     Args:
         document_id: ID del documento
         db: Sesión de base de datos
     
     Returns:
-        FileResponse con el archivo DOCX del Cover Letter
+        Response con el archivo DOCX del Cover Letter generado en memoria
     """
     doc_repo = DocumentRepository(db)
     document = doc_repo.get_document(document_id)
@@ -608,18 +811,24 @@ async def download_cover_letter(
     if not document:
         raise HTTPException(status_code=404, detail="Documento no encontrado")
     
-    if not document.cover_letter_filename:
+    if not document.cover_letter_markdown:
         raise HTTPException(status_code=400, detail="Cover Letter no generado aún")
     
-    file_path = GENERATED_DOCS_FOLDER / document.cover_letter_filename
+    # Generar DOCX en memoria
+    try:
+        docx_binary = convert_md_text_to_docx_binary(document.cover_letter_markdown)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error al generar archivo DOCX del Cover Letter: {str(e)}"
+        )
     
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="Archivo de Cover Letter no encontrado")
-    
-    return FileResponse(
-        path=str(file_path),
-        filename=f"cover_letter.docx",
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    return Response(
+        content=docx_binary,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={
+            "Content-Disposition": f"attachment; filename=cover_letter.docx"
+        }
     )
 
 
@@ -677,5 +886,3 @@ if __name__ == "__main__":
         port=port,
         reload=os.getenv("DEBUG_MODE", "False") == "True"
     )
-
-
