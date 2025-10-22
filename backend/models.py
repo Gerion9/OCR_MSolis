@@ -123,3 +123,22 @@ class CoverLetterGenerateResponse(BaseModel):
     download_url: Optional[str] = None
 
 
+class ChatMessage(BaseModel):
+    """
+    Mensaje de chat del usuario
+    """
+    message: str
+    document_id: int
+    document_type: str = "declaration"  # 'declaration' o 'cover'
+    user_id: Optional[str] = None
+
+
+class ChatResponse(BaseModel):
+    """
+    Respuesta del chat
+    """
+    success: bool
+    message: str
+    response: Optional[str] = None
+    has_modification: bool = False
+    modified_text: Optional[str] = None
