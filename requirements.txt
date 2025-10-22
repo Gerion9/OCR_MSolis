@@ -16,6 +16,9 @@ aiosqlite==0.20.0
 google-generativeai>=0.8.0
 httpx>=0.27.0
 
+# Chat con memoria
+mem0ai==0.1.28
+
 # Utilidades
 python-dotenv==1.0.1
 python-dateutil==2.9.0
@@ -33,5 +36,3 @@ PyPDF2==3.0.1
 
 # CORS y middleware (starlette is auto-installed by fastapi)
 # starlette will be installed automatically with the correct version
-
-
