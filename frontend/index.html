@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Generation of Declaration Letters and Cover Letters</title>
+    <title>DeclarationLetterOnline - Sistema de Automatización</title>
     <link rel="stylesheet" href="/frontend/styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
@@ -31,7 +31,7 @@
     <section class="upload-section" id="uploadSection">
         <div class="container">
             <h2 class="section-title">Upload questionnaire</h2>
-            <p class="section-subtitle">Upload questionnaires to generate Declaration Letters and Cover Letters</p>
+            <p class="section-subtitle">Upload questionnaires to generate Declaration Letters</p>
             
             <div class="upload-container-new">
                 <!-- Upload Box - Siempre visible -->
@@ -111,6 +111,56 @@
         </div>
     </div>
 
-    <script src="/frontend/script.js?v=2.0"></script>
+    <!-- Chat Modal -->
+    <div class="chat-modal hidden" id="chatModal">
+        <div class="chat-modal-overlay"></div>
+        <div class="chat-modal-content">
+            <div class="chat-modal-header">
+                <div>
+                    <h3>🤖 AI Assistant</h3>
+                    <p class="chat-subtitle">Ask me to improve or modify your document</p>
+                </div>
+                <button class="btn-close-chat" id="closeChatBtn">&times;</button>
+            </div>
+            <div class="chat-modal-body" id="chatMessages">
+                <div class="chat-welcome">
+                    <div class="chat-welcome-icon">💬</div>
+                    <h4>Welcome to AI Assistant!</h4>
+                    <p>I can help you:</p>
+                    <ul>
+                        <li>Improve specific sections of your document</li>
+                        <li>Rewrite paragraphs with better clarity</li>
+                        <li>Answer questions about the content</li>
+                        <li>Suggest legal writing improvements</li>
+                    </ul>
+                    <p class="chat-tip">💡 <strong>Tip:</strong> Ask me "Rewrite the first paragraph" or "Make this sound more formal"</p>
+                </div>
+            </div>
+            <div class="chat-modal-footer">
+                <div class="chat-input-container">
+                    <textarea 
+                        id="chatInput" 
+                        placeholder="Ask me anything about your document..."
+                        rows="2"
+                    ></textarea>
+                    <button class="btn btn-primary chat-send-btn" id="sendChatBtn">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                            <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 8L11 13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        Send
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Botón flotante de chat -->
+    <button class="chat-fab hidden" id="chatFab" title="Open AI Assistant">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        </svg>
+    </button>
+
+    <script src="/frontend/script.js?v=2.2"></script>
 </body>
 </html>
