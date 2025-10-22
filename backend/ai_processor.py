@@ -416,6 +416,89 @@ Genera el Cover Letter ahora:
 """
         return prompt
     
+    def generate_declaration_letter_stream(self, questionnaire_text: str):
+        """
+        Genera una declaration letter basada en el cuestionario usando streaming
+        
+        Args:
+            questionnaire_text: Texto del cuestionario del afectado
+        
+        Yields:
+            str: Chunks de texto generados en tiempo real
+        """
+        try:
+            # Construir el prompt completo
+            full_prompt = self._build_prompt(questionnaire_text)
+            
+            print("Generando declaration letter con IA (streaming)...")
+            print(f"Usando timeout de {self.request_timeout} segundos...")
+            
+            start_time = time.time()
+            
+            # Generar respuesta con streaming
+            response = self.model.generate_content(full_prompt, stream=True)
+            
+            # Yield cada chunk generado
+            for chunk in response:
+                if chunk.text:
+                    yield chunk.text
+            
+            elapsed_time = time.time() - start_time
+            print(f"✓ Generación con streaming completada en {elapsed_time:.2f} segundos")
+        
+        except Exception as e:
+            error_msg = str(e)
+            if "timeout" in error_msg.lower() or "timed out" in error_msg.lower() or "ReadTimeout" in str(type(e).__name__):
+                print(f"✗ Error: La generación excedió el tiempo límite de {self.request_timeout}s")
+                print("Sugerencia: El documento es muy largo o el servidor está ocupado. Intente nuevamente.")
+            else:
+                print(f"✗ Error al generar declaration letter (streaming): {e}")
+            raise Exception(f"Error al generar declaration letter: {error_msg}")
+    
+    def generate_cover_letter_stream(self, declaration_letter_content: str):
+        """
+        Genera un Cover Letter basado en el Declaration Letter usando streaming
+        
+        Args:
+            declaration_letter_content: Contenido completo del Declaration Letter
+        
+        Yields:
+            str: Chunks de texto generados en tiempo real
+        """
+        try:
+            # Validar que se hayan cargado los archivos XML de Cover Letter
+            if not self.cover_letter_system_prompt or not self.cover_letter_structure:
+                print("✗ Archivos XML de Cover Letter no cargados")
+                raise Exception("Cover Letter XML files not loaded")
+            
+            # Construir el prompt para el Cover Letter
+            full_prompt = self._build_cover_letter_prompt(declaration_letter_content)
+            
+            print("Generando Cover Letter con IA (streaming)...")
+            print(f"Usando timeout de {self.request_timeout} segundos...")
+            
+            start_time = time.time()
+            
+            # Generar respuesta con streaming usando el modelo optimizado
+            response = self.cover_letter_model.generate_content(full_prompt, stream=True)
+            
+            # Yield cada chunk generado
+            for chunk in response:
+                if chunk.text:
+                    yield chunk.text
+            
+            elapsed_time = time.time() - start_time
+            print(f"✓ Generación de Cover Letter con streaming completada en {elapsed_time:.2f} segundos")
+        
+        except Exception as e:
+            error_msg = str(e)
+            if "timeout" in error_msg.lower() or "timed out" in error_msg.lower() or "ReadTimeout" in str(type(e).__name__):
+                print(f"✗ Error: La generación excedió el tiempo límite de {self.request_timeout}s")
+                print("Sugerencia: El documento es muy largo o el servidor está ocupado. Intente nuevamente.")
+            else:
+                print(f"✗ Error al generar Cover Letter (streaming): {e}")
+            raise Exception(f"Error al generar Cover Letter: {error_msg}")
+    
     def validate_api_key(self) -> bool:
         """
         Valida que la API key funcione correctamente
@@ -475,5 +558,3 @@ def create_ai_processor(api_key: str, model_name: str = "gemini-1.5-pro", reques
     except Exception as e:
         print(f"✗ Error al crear procesador de IA: {e}")
         return None
-
-
