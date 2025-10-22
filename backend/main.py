@@ -25,11 +25,14 @@ from backend.models import (
     DocumentStatusResponse,
     RegenerateRequest,
     HealthCheckResponse,
-    CoverLetterGenerateResponse
+    CoverLetterGenerateResponse,
+    ChatMessage,
+    ChatResponse
 )
 from backend.database import DatabaseManager, DocumentRepository, LogRepository
 from backend.ai_processor import create_ai_processor, AIProcessor
 from backend.document_converter import convert_md_text_to_docx_binary
+from backend.chat_memory import ChatMemorySystem
 
 # Cargar variables de entorno
 from dotenv import load_dotenv
@@ -54,6 +57,9 @@ MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-pro")
 GEMINI_TIMEOUT = int(os.getenv("GEMINI_TIMEOUT", "300"))  # 5 minutos por defecto
+
+# Configuración de mem0 para chat
+MEM0_API_KEY = os.getenv("MEM0_API_KEY", "")
 
 
 # ==================== INICIALIZACIÓN ====================
@@ -90,6 +96,21 @@ if GEMINI_API_KEY and GEMINI_API_KEY != "tu_api_key_aqui":
         print("✗ Error al inicializar procesador de IA")
 else:
     print("⚠ Advertencia: API key de Gemini no configurada")
+
+# Inicializar sistema de chat con memoria
+chat_system: Optional[ChatMemorySystem] = None
+
+if GEMINI_API_KEY and MEM0_API_KEY:
+    try:
+        chat_system = ChatMemorySystem(
+            mem0_api_key=MEM0_API_KEY,
+            google_api_key=GEMINI_API_KEY
+        )
+        print("✓ Sistema de chat con memoria inicializado correctamente")
+    except Exception as e:
+        print(f"✗ Error al inicializar sistema de chat: {e}")
+else:
+    print("⚠ Advertencia: API keys no configuradas para el sistema de chat")
 
 
 # Montar archivos estáticos
@@ -832,6 +853,52 @@ async def download_cover_letter(
     )
 
 
+@app.post("/api/download-edited/{document_id}/{document_type}")
+async def download_edited_document(
+    document_id: int,
+    document_type: str,
+    request: dict,
+    db: Session = Depends(get_db)
+):
+    """
+    Descarga un documento con contenido editado por el usuario
+    
+    Args:
+        document_id: ID del documento
+        document_type: Tipo de documento ('declaration' o 'cover')
+        request: Diccionario con el contenido editado
+        db: Sesión de base de datos
+    
+    Returns:
+        Response con el archivo DOCX generado con el contenido editado
+    """
+    # Obtener contenido editado del request
+    edited_content = request.get('content')
+    
+    if not edited_content:
+        raise HTTPException(status_code=400, detail="Contenido editado no proporcionado")
+    
+    # Generar DOCX en memoria con el contenido editado
+    try:
+        docx_binary = convert_md_text_to_docx_binary(edited_content)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error al generar archivo DOCX editado: {str(e)}"
+        )
+    
+    # Determinar nombre de archivo
+    filename = f"{document_type}_{document_id}_edited.docx"
+    
+    return Response(
+        content=docx_binary,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}"
+        }
+    )
+
+
 @app.get("/api/preview-cover-letter/{document_id}")
 async def preview_cover_letter(
     document_id: int,
@@ -862,6 +929,129 @@ async def preview_cover_letter(
         "cover_letter_markdown": document.cover_letter_markdown,
         "cover_letter_filename": document.cover_letter_filename
     })
+
+
+# ==================== CHAT CON MEMORIA ====================
+
+@app.post("/api/chat", response_model=ChatResponse)
+async def chat_with_ai(
+    chat_message: ChatMessage,
+    db: Session = Depends(get_db)
+):
+    """
+    Endpoint de chat con IA y memoria para modificar documentos
+    
+    Args:
+        chat_message: Mensaje del usuario con contexto del documento
+        db: Sesión de base de datos
+    
+    Returns:
+        Respuesta del chat con posibles modificaciones
+    """
+    if not chat_system:
+        raise HTTPException(
+            status_code=503, 
+            detail="Sistema de chat no disponible. Verifique las API keys."
+        )
+    
+    try:
+        # Obtener el documento
+        doc_repo = DocumentRepository(db)
+        document = doc_repo.get_document(chat_message.document_id)
+        
+        if not document:
+            raise HTTPException(status_code=404, detail="Documento no encontrado")
+        
+        # Obtener el contenido del documento según el tipo
+        if chat_message.document_type == "declaration":
+            document_content = document.markdown_content
+        elif chat_message.document_type == "cover":
+            document_content = document.cover_letter_markdown
+        else:
+            raise HTTPException(status_code=400, detail="Tipo de documento inválido")
+        
+        if not document_content:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"{chat_message.document_type.title()} Letter no generado aún"
+            )
+        
+        # Generar ID de usuario único (puede ser una sesión o user ID real)
+        user_id = chat_message.user_id or f"user_{chat_message.document_id}"
+        
+        # Generar respuesta del chat
+        response = chat_system.chat(
+            user_message=chat_message.message,
+            user_id=user_id,
+            document_content=document_content,
+            document_type=chat_message.document_type,
+            save_to_memory=True
+        )
+        
+        # Verificar si la respuesta contiene texto modificado
+        has_modification = "MODIFIED_TEXT:" in response
+        modified_text = None
+        
+        if has_modification:
+            # Extraer el texto modificado
+            parts = response.split("MODIFIED_TEXT:")
+            if len(parts) > 1:
+                # Tomar el texto después de "MODIFIED_TEXT:"
+                modified_text = parts[1].strip()
+                # Limpiar markdown si es necesario
+                if modified_text.startswith("```"):
+                    # Quitar bloques de código markdown
+                    modified_text = modified_text.split("```")[1]
+                    if modified_text.startswith("\n"):
+                        modified_text = modified_text[1:]
+        
+        return ChatResponse(
+            success=True,
+            message="Respuesta generada exitosamente",
+            response=response,
+            has_modification=has_modification,
+            modified_text=modified_text
+        )
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        print(f"Error en chat: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error al procesar el mensaje: {str(e)}"
+        )
+
+
+@app.delete("/api/chat/memory/{user_id}")
+async def clear_chat_memory(user_id: str):
+    """
+    Limpia la memoria de chat de un usuario
+    
+    Args:
+        user_id: ID del usuario
+    
+    Returns:
+        Confirmación de limpieza
+    """
+    if not chat_system:
+        raise HTTPException(
+            status_code=503, 
+            detail="Sistema de chat no disponible"
+        )
+    
+    try:
+        chat_system.clear_user_memories(user_id)
+        return JSONResponse(content={
+            "success": True,
+            "message": f"Memoria limpiada para usuario {user_id}"
+        })
+    except Exception as e:
+        print(f"Error limpiando memoria: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al limpiar memoria: {str(e)}"
+        )
 
 
 # ==================== INICIO DE LA APLICACIÓN ====================
