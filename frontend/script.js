@@ -14,7 +14,8 @@ const appState = {
     documentsQueue: [],  // Cola de archivos listos para procesar
     processedDocuments: {},  // Documentos ya procesados {documentId: {data}}
     activeDocumentId: null,  // ID del documento actualmente visible
-    activeDocumentType: 'declaration'  // 'declaration' o 'cover'
+    activeDocumentType: 'declaration',  // 'declaration' o 'cover'
+    activeStreams: {}  // EventSource activos por documentId {documentId: {declaration: EventSource, cover: EventSource}}
 };
 
 // ==========================================
@@ -220,7 +221,7 @@ function createQueueItemElement(item) {
         <div class="queue-item-status ${item.status}">
             ${getStatusText(item.status)}
         </div>
-        ${item.status === 'pending' ? `<button class="btn-icon" onclick="removeFromQueue('${item.id}')" title="Remove">
+        ${item.status !== 'completed' ? `<button class="btn-icon" onclick="removeFromQueue('${item.id}')" title="Remove">
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
                 <path d="M15 5L5 15M5 5L15 15" stroke="currentColor" stroke-width="2"/>
             </svg>
@@ -243,8 +244,51 @@ function getStatusText(status) {
 }
 
 function removeFromQueue(itemId) {
+    // Encontrar el documento en la cola
+    const queueItem = appState.documentsQueue.find(item => item.id == itemId);
+    
+    if (queueItem) {
+        // Si el documento tiene un documentId (ya fue procesado o está en proceso)
+        const documentId = queueItem.documentId;
+        
+        if (documentId) {
+            // Cancelar streams activos si existen
+            if (appState.activeStreams[documentId]) {
+                // Cerrar Declaration Letter stream
+                if (appState.activeStreams[documentId].declaration) {
+                    appState.activeStreams[documentId].declaration.close();
+                    delete appState.activeStreams[documentId].declaration;
+                    console.log(`Cancelled Declaration Letter stream for document ${documentId}`);
+                }
+                
+                // Cerrar Cover Letter stream
+                if (appState.activeStreams[documentId].cover) {
+                    appState.activeStreams[documentId].cover.close();
+                    delete appState.activeStreams[documentId].cover;
+                    console.log(`Cancelled Cover Letter stream for document ${documentId}`);
+                }
+                
+                // Limpiar objeto de streams si está vacío
+                if (Object.keys(appState.activeStreams[documentId]).length === 0) {
+                    delete appState.activeStreams[documentId];
+                }
+            }
+            
+            // Cerrar el panel del documento si existe
+            closeDocumentTab(documentId, { stopPropagation: () => {} });
+            
+            // Limpiar del estado procesado
+            if (appState.processedDocuments[documentId]) {
+                delete appState.processedDocuments[documentId];
+            }
+        }
+    }
+    
+    // Eliminar de la cola
     appState.documentsQueue = appState.documentsQueue.filter(item => item.id != itemId);
     updateQueueUI();
+    
+    console.log(`Removed document ${itemId} from queue`);
 }
 
 // Hacer función global para poder llamarla desde HTML
@@ -405,19 +449,15 @@ function addDownloadButtonToHeader(documentId, documentType, label) {
     const panel = document.querySelector(`.document-panel[data-document-id="${documentId}"]`);
     if (!panel) return;
     
-    const downloadSection = panel.querySelector('.document-download-section');
     const buttonsContainer = panel.querySelector('.download-buttons-container');
-    if (!downloadSection || !buttonsContainer) return;
+    if (!buttonsContainer) return;
     
     // Verificar si el botón ya existe
     const existingBtn = buttonsContainer.querySelector(`.download-${documentType}-btn-header`);
     if (existingBtn) return;
     
-    // Mostrar la sección de descarga
-    downloadSection.classList.remove('hidden');
-    
     const downloadBtn = document.createElement('button');
-    downloadBtn.className = `btn btn-primary download-${documentType}-btn-header`;
+    downloadBtn.className = `btn btn-primary btn-sm download-${documentType}-btn-header`;
     downloadBtn.onclick = () => downloadDocument(documentId, documentType);
     downloadBtn.innerHTML = `
         <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
@@ -470,6 +510,12 @@ async function processDocumentStream(documentId, fileName) {
         let chunkBuffer = '';
         let isFirstChunk = true;
         
+        // Guardar referencia al EventSource para poder cancelarlo
+        if (!appState.activeStreams[documentId]) {
+            appState.activeStreams[documentId] = {};
+        }
+        appState.activeStreams[documentId].declaration = eventSource;
+        
         // Inicializar panel del documento
         initializeDocumentPanel(documentId, fileName);
         
@@ -498,6 +544,10 @@ async function processDocumentStream(documentId, fileName) {
                     
                 } else if (data.type === 'complete') {
                     eventSource.close();
+                    // Limpiar referencia al stream
+                    if (appState.activeStreams[documentId]) {
+                        delete appState.activeStreams[documentId].declaration;
+                    }
                     
                     // Asegurar que todo el contenido se muestre
                     updateDocumentContent(documentId, 'declaration', fullContent);
@@ -531,12 +581,20 @@ async function processDocumentStream(documentId, fileName) {
                         });
                 } else if (data.type === 'error' || data.error) {
                     eventSource.close();
+                    // Limpiar referencia al stream
+                    if (appState.activeStreams[documentId]) {
+                        delete appState.activeStreams[documentId].declaration;
+                    }
                     hideLoadingSpinner(documentId);
                     enableDeclarationButtons(documentId); // Habilitar para permitir reintentos
                     reject(new Error(data.error || 'Processing error'));
                 }
             } catch (parseError) {
                 eventSource.close();
+                // Limpiar referencia al stream
+                if (appState.activeStreams[documentId]) {
+                    delete appState.activeStreams[documentId].declaration;
+                }
                 hideLoadingSpinner(documentId);
                 enableDeclarationButtons(documentId);
                 reject(parseError);
@@ -545,6 +603,10 @@ async function processDocumentStream(documentId, fileName) {
         
         eventSource.onerror = function(error) {
             eventSource.close();
+            // Limpiar referencia al stream
+            if (appState.activeStreams[documentId]) {
+                delete appState.activeStreams[documentId].declaration;
+            }
             hideLoadingSpinner(documentId);
             enableDeclarationButtons(documentId);
             if (!fullContent) {
@@ -688,6 +750,9 @@ function switchToDocument(documentId) {
     });
     
     appState.activeDocumentId = documentId;
+    
+    // Mostrar botón de chat cuando hay un documento activo
+    showChatButton();
 }
 
 function closeDocumentTab(documentId, event) {
@@ -712,7 +777,7 @@ function closeDocumentTab(documentId, event) {
             switchToDocument(firstTab.dataset.documentId);
         } else {
             // No quedan documentos, ocultar sección
-            elements.previewSection.classList.add('hidden');
+    elements.previewSection.classList.add('hidden');
             elements.documentsTabs.classList.add('hidden');
         }
     }
@@ -741,27 +806,29 @@ function initializeDocumentPanel(documentId, fileName) {
                         Cover Letter
                     </button>
                 </div>
-                <div class="document-download-section hidden">
-                    <div class="download-buttons-container">
-                        <!-- Botones de descarga se agregarán aquí dinámicamente -->
+                <div class="document-controls-wrapper">
+                    <div class="document-download-section">
+                        <div class="download-buttons-container">
+                            <!-- Botones de descarga se agregarán aquí dinámicamente -->
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
         <div class="document-panel-body">
-            <div class="document-content declaration-content" style="max-height: 600px; overflow-y: auto;">
+            <div class="document-content declaration-content" contenteditable="true" style="max-height: 600px; overflow-y: auto;">
                 <p style="color: #6b7280; font-style: italic;">Generating document in real-time...</p>
             </div>
-            <div class="document-content cover-content hidden" style="max-height: 600px; overflow-y: auto;">
+            <div class="document-content cover-content hidden" contenteditable="true" style="max-height: 600px; overflow-y: auto;">
                 <!-- Cover Letter content -->
             </div>
         </div>
         <div class="document-panel-footer">
             <div class="action-buttons">
                 <button class="btn btn-secondary regenerate-btn" onclick="regenerateDocument(${documentId})" disabled>
-                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                        <path d="M17 10C17 13.866 13.866 17 10 17C6.134 17 3 13.866 3 10C3 6.134 6.134 3 10 3C11.848 3 13.536 3.752 14.778 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                    </svg>
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <path d="M17 10C17 13.866 13.866 17 10 17C6.134 17 3 13.866 3 10C3 6.134 6.134 3 10 3C11.848 3 13.536 3.752 14.778 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
                     Regenerate
                 </button>
             </div>
@@ -851,6 +918,9 @@ function switchDocumentType(documentId, type) {
     const panel = document.querySelector(`.document-panel[data-document-id="${documentId}"]`);
     if (!panel) return;
     
+    // Actualizar estado global del tipo de documento activo
+    appState.activeDocumentType = type;
+    
     // Actualizar tabs de tipo
     panel.querySelectorAll('.document-type-tab').forEach(tab => {
         tab.classList.remove('active');
@@ -885,11 +955,51 @@ window.switchDocumentType = switchDocumentType;
 // ACCIONES DE DOCUMENTOS
 // ==========================================
 
-function downloadDocument(documentId, type) {
-    if (type === 'declaration') {
-        window.location.href = `${API_BASE_URL}/api/download/${documentId}`;
-    } else {
-        window.location.href = `${API_BASE_URL}/api/download-cover-letter/${documentId}`;
+async function downloadDocument(documentId, type) {
+    // Obtener el contenido actual del DOM (puede haber sido editado por el usuario)
+    const panel = document.querySelector(`.document-panel[data-document-id="${documentId}"]`);
+    if (!panel) {
+        showError('Document panel not found');
+        return;
+    }
+    
+    const contentEl = panel.querySelector(`.${type}-content`);
+    if (!contentEl) {
+        showError('Document content not found');
+        return;
+    }
+    
+    // Extraer el texto del HTML (incluyendo cualquier edición)
+    const htmlContent = contentEl.innerHTML;
+    const textContent = extractTextFromHTML(htmlContent);
+    
+    try {
+        // Enviar el contenido actual al backend para convertirlo a DOCX
+        const response = await fetch(`${API_BASE_URL}/api/download-edited/${documentId}/${type}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ content: textContent })
+        });
+        
+        if (response.ok) {
+            // Descargar el archivo
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${type}_${documentId}.docx`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        } else {
+            showError('Error downloading document');
+        }
+    } catch (error) {
+        console.error('Error downloading document:', error);
+        showError('Error downloading document');
     }
 }
 
@@ -920,7 +1030,7 @@ async function regenerateDocument(documentId) {
             regenerateBtn.disabled = false;
             regenerateBtn.innerHTML = `
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                    <path d="M17 10C17 13.866 13.866 17 10 17C6.134 17 3 13.866 3 10C3 6.134 6.134 3 10 3C11.848 3 13.536 3.752 14.778 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <path d="M17 10C17 13.866 13.866 17 10 17C6.134 17 3 13.866 3 10C3 6.134 6.134 3 10 3C11.848 3 13.536 3.752 14.778 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
             </svg>
                 Regenerate
         `;
@@ -1005,7 +1115,7 @@ async function regenerateDocumentStream(documentId) {
             enableDeclarationButtons(documentId);
             if (!fullContent) {
                 reject(new Error('Connection lost'));
-            } else {
+        } else {
                 resolve();
             }
         };
@@ -1021,6 +1131,12 @@ async function generateCoverLetterStream(documentId) {
         let fullContent = '';
         let chunkBuffer = '';
         let isFirstChunk = true;
+        
+        // Guardar referencia al EventSource para poder cancelarlo
+        if (!appState.activeStreams[documentId]) {
+            appState.activeStreams[documentId] = {};
+        }
+        appState.activeStreams[documentId].cover = eventSource;
         
         // Mostrar spinner para Cover Letter
         const panel = document.querySelector(`.document-panel[data-document-id="${documentId}"]`);
@@ -1053,6 +1169,10 @@ async function generateCoverLetterStream(documentId) {
                     
                 } else if (data.type === 'complete') {
                     eventSource.close();
+                    // Limpiar referencia al stream
+                    if (appState.activeStreams[documentId]) {
+                        delete appState.activeStreams[documentId].cover;
+                    }
                     
                     // Asegurar que todo el contenido se muestre
                     updateDocumentContent(documentId, 'cover', fullContent);
@@ -1069,16 +1189,28 @@ async function generateCoverLetterStream(documentId) {
                     resolve();
                 } else if (data.type === 'error' || data.error) {
                     eventSource.close();
+                    // Limpiar referencia al stream
+                    if (appState.activeStreams[documentId]) {
+                        delete appState.activeStreams[documentId].cover;
+                    }
                     reject(new Error(data.error || 'Error generating Cover Letter'));
                 }
             } catch (parseError) {
                 eventSource.close();
+                // Limpiar referencia al stream
+                if (appState.activeStreams[documentId]) {
+                    delete appState.activeStreams[documentId].cover;
+                }
                 reject(parseError);
             }
         };
         
         eventSource.onerror = function(error) {
             eventSource.close();
+            // Limpiar referencia al stream
+            if (appState.activeStreams[documentId]) {
+                delete appState.activeStreams[documentId].cover;
+            }
             if (!fullContent) {
                 reject(new Error('Connection lost'));
             } else {
@@ -1112,6 +1244,21 @@ function simulateTypingEffectCover(documentId, content) {
 }
 
 
+// Función auxiliar para extraer texto limpio del HTML
+function extractTextFromHTML(html) {
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = html;
+    
+    // Reemplazar <br> con saltos de línea
+    tempDiv.querySelectorAll('br').forEach(br => {
+        br.replaceWith('\n');
+    });
+    
+    // Reemplazar </p> con doble salto de línea para preservar párrafos
+    const text = tempDiv.innerText;
+    return text;
+}
+
 // ==========================================
 // MANEJO DE ERRORES
 // ==========================================
@@ -1123,6 +1270,300 @@ function showError(message) {
 
 function closeErrorModal() {
     elements.errorModal.classList.add('hidden');
+}
+
+// ==========================================
+// SISTEMA DE CHAT CON MEMORIA
+// ==========================================
+
+const chatElements = {
+    fab: document.getElementById('chatFab'),
+    modal: document.getElementById('chatModal'),
+    closeBtn: document.getElementById('closeChatBtn'),
+    messages: document.getElementById('chatMessages'),
+    input: document.getElementById('chatInput'),
+    sendBtn: document.getElementById('sendChatBtn')
+};
+
+let chatHistory = [];
+
+// Mostrar el botón de chat cuando hay un documento activo
+function showChatButton() {
+    if (appState.activeDocumentId && chatElements.fab) {
+        chatElements.fab.classList.remove('hidden');
+    }
+}
+
+// Ocultar el botón de chat
+function hideChatButton() {
+    if (chatElements.fab) {
+        chatElements.fab.classList.add('hidden');
+    }
+}
+
+// Abrir modal de chat
+function openChatModal() {
+    if (chatElements.modal) {
+        chatElements.modal.classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
+        
+        // Limpiar el mensaje de bienvenida si hay historial
+        if (chatHistory.length > 0) {
+            const welcome = chatElements.messages.querySelector('.chat-welcome');
+            if (welcome) {
+                welcome.remove();
+            }
+        }
+        
+        // Focus en el input
+        setTimeout(() => {
+            if (chatElements.input) {
+                chatElements.input.focus();
+            }
+        }, 300);
+    }
+}
+
+// Cerrar modal de chat
+function closeChatModal() {
+    if (chatElements.modal) {
+        chatElements.modal.classList.add('hidden');
+        document.body.style.overflow = 'auto';
+    }
+}
+
+// Agregar mensaje al chat
+function addChatMessage(content, isUser = false, hasApplyButton = false, modifiedText = null) {
+    // Remover mensaje de bienvenida si existe
+    const welcome = chatElements.messages.querySelector('.chat-welcome');
+    if (welcome) {
+        welcome.remove();
+    }
+    
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `chat-message ${isUser ? 'chat-message-user' : 'chat-message-assistant'}`;
+    
+    const bubble = document.createElement('div');
+    bubble.className = `chat-bubble ${isUser ? 'chat-bubble-user' : 'chat-bubble-assistant'}`;
+    
+    // Formatear el contenido (convertir markdown básico a HTML)
+    let formattedContent = content
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/\n/g, '<br>');
+    
+    bubble.innerHTML = formattedContent;
+    
+    // Agregar botón de aplicar si es necesario
+    if (hasApplyButton && modifiedText) {
+        const applyBtn = document.createElement('button');
+        applyBtn.className = 'chat-apply-btn';
+        applyBtn.innerHTML = `
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+            </svg>
+            Apply to Document
+        `;
+        applyBtn.onclick = () => applyModification(modifiedText);
+        bubble.appendChild(applyBtn);
+    }
+    
+    messageDiv.appendChild(bubble);
+    chatElements.messages.appendChild(messageDiv);
+    
+    // Scroll al final
+    chatElements.messages.scrollTop = chatElements.messages.scrollHeight;
+    
+    // Guardar en historial
+    chatHistory.push({
+        content: content,
+        isUser: isUser,
+        timestamp: new Date()
+    });
+}
+
+// Mostrar indicador de "escribiendo"
+function showTypingIndicator() {
+    const typingDiv = document.createElement('div');
+    typingDiv.className = 'chat-message chat-message-assistant';
+    typingDiv.id = 'typingIndicator';
+    
+    const typingBubble = document.createElement('div');
+    typingBubble.className = 'chat-bubble chat-bubble-assistant chat-typing';
+    typingBubble.innerHTML = `
+        <div class="chat-typing-dot"></div>
+        <div class="chat-typing-dot"></div>
+        <div class="chat-typing-dot"></div>
+    `;
+    
+    typingDiv.appendChild(typingBubble);
+    chatElements.messages.appendChild(typingDiv);
+    chatElements.messages.scrollTop = chatElements.messages.scrollHeight;
+}
+
+// Ocultar indicador de "escribiendo"
+function hideTypingIndicator() {
+    const indicator = document.getElementById('typingIndicator');
+    if (indicator) {
+        indicator.remove();
+    }
+}
+
+// Enviar mensaje al chat
+async function sendChatMessage() {
+    const message = chatElements.input.value.trim();
+    
+    if (!message) return;
+    
+    if (!appState.activeDocumentId) {
+        showError('No document selected. Please select a document first.');
+        return;
+    }
+    
+    // Agregar mensaje del usuario
+    addChatMessage(message, true);
+    
+    // Limpiar input
+    chatElements.input.value = '';
+    chatElements.input.style.height = 'auto';
+    
+    // Deshabilitar input y botón
+    chatElements.input.disabled = true;
+    chatElements.sendBtn.disabled = true;
+    
+    // Mostrar indicador de escribiendo
+    showTypingIndicator();
+    
+    try {
+        // Enviar al backend
+        const response = await fetch(`${API_BASE_URL}/api/chat`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                message: message,
+                document_id: appState.activeDocumentId,
+                document_type: appState.activeDocumentType,
+                user_id: `user_${appState.activeDocumentId}`
+            })
+        });
+        
+        hideTypingIndicator();
+        
+        if (response.ok) {
+            const data = await response.json();
+            
+            // Agregar respuesta del asistente
+            addChatMessage(
+                data.response, 
+                false, 
+                data.has_modification,
+                data.modified_text
+            );
+        } else {
+            const error = await response.json();
+            showError(error.detail || 'Error communicating with AI assistant');
+        }
+        
+    } catch (error) {
+        hideTypingIndicator();
+        console.error('Chat error:', error);
+        showError('Failed to communicate with AI assistant');
+    } finally {
+        // Rehabilitar input y botón
+        chatElements.input.disabled = false;
+        chatElements.sendBtn.disabled = false;
+        chatElements.input.focus();
+    }
+}
+
+// Aplicar modificación al documento
+function applyModification(modifiedText) {
+    if (!modifiedText) return;
+    
+    const panel = document.querySelector(`.document-panel[data-document-id="${appState.activeDocumentId}"]`);
+    if (!panel) {
+        showError('Document panel not found');
+        return;
+    }
+    
+    const contentEl = panel.querySelector(`.${appState.activeDocumentType}-content`);
+    if (!contentEl) {
+        showError('Document content not found');
+        return;
+    }
+    
+    // Convertir el texto modificado a HTML (markdown básico)
+    const htmlContent = convertMarkdownToHTML(modifiedText);
+    
+    // Aplicar al documento
+    contentEl.innerHTML = htmlContent;
+    
+    // Cerrar modal y mostrar notificación
+    closeChatModal();
+    
+    // Crear notificación de éxito
+    const notification = document.createElement('div');
+    notification.className = 'success-notification';
+    notification.textContent = '✓ Changes applied to document!';
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: #10b981;
+        color: white;
+        padding: 1rem 1.5rem;
+        border-radius: 8px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        z-index: 10000;
+        font-weight: 600;
+        animation: slideInRight 0.3s ease-out;
+    `;
+    
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        notification.style.animation = 'slideOutRight 0.3s ease-out';
+        setTimeout(() => notification.remove(), 300);
+    }, 3000);
+}
+
+// Event Listeners
+if (chatElements.fab) {
+    chatElements.fab.addEventListener('click', openChatModal);
+}
+
+if (chatElements.closeBtn) {
+    chatElements.closeBtn.addEventListener('click', closeChatModal);
+}
+
+if (chatElements.modal) {
+    chatElements.modal.addEventListener('click', (e) => {
+        if (e.target.classList.contains('chat-modal-overlay')) {
+            closeChatModal();
+        }
+    });
+}
+
+if (chatElements.sendBtn) {
+    chatElements.sendBtn.addEventListener('click', sendChatMessage);
+}
+
+if (chatElements.input) {
+    // Auto-resize textarea
+    chatElements.input.addEventListener('input', function() {
+        this.style.height = 'auto';
+        this.style.height = (this.scrollHeight) + 'px';
+    });
+    
+    // Enviar con Enter (Shift+Enter para nueva línea)
+    chatElements.input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendChatMessage();
+        }
+    });
 }
 
 console.log('DeclarationLetterOnline (Multi-Document) - Script loaded');
