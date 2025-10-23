@@ -37,11 +37,11 @@ class ChatMemorySystem:
             "temperature": 0.7,
             "top_p": 0.95,
             "top_k": 40,
-            "max_output_tokens": 2048,
+            "max_output_tokens": 8000,  # Aumentado para permitir documentos completos
         }
         
         self.model = genai.GenerativeModel(
-            model_name="gemini-2.0-flash-exp",
+            model_name="gemini-2.0-flash-exp",  # Modelo correcto con mayor capacidad
             generation_config=self.generation_config
         )
         
@@ -55,10 +55,22 @@ Your capabilities:
 4. Provide legal writing advice for immigration documents
 5. Remember previous conversations and user preferences
 
-When the user asks to modify or rewrite something:
-- Provide the new text clearly marked with "MODIFIED_TEXT:" followed by the new content
-- Explain what changes were made and why
+CRITICAL INSTRUCTION FOR MODIFICATIONS:
+When the user asks to modify or rewrite anything, you MUST:
+1. Explain the changes briefly FIRST (1-2 sentences)
+2. Add a line with ONLY: "MODIFIED_TEXT:"
+3. After that line, OUTPUT THE COMPLETE DOCUMENT FROM START TO FINISH with modifications integrated
+
+DO NOT output only the modified section. DO NOT summarize. DO NOT truncate.
+The system will replace the entire document with what you provide after "MODIFIED_TEXT:"
+
+If the document is long, still output ALL of it. Users need the FULL document with changes integrated.
+
+Format requirements:
 - Keep the formal tone appropriate for legal documents
+- Maintain ALL sections of the original document
+- Preserve the original markdown formatting (## headers, paragraphs, etc.)
+- Include everything from the beginning to the end of the document
 
 Current document context will be provided with each query."""
 
@@ -163,15 +175,12 @@ Current document context will be provided with each query."""
             # Construir contexto del documento
             document_context = ""
             if document_content:
-                # Limitar el contexto del documento a los primeros 3000 caracteres
-                truncated_content = document_content[:3000]
-                if len(document_content) > 3000:
-                    truncated_content += "\n... (document continues)"
-                
+                # Proporcionar el documento completo sin truncar
+                # El modelo tiene suficiente contexto para procesarlo
                 document_context = f"""
 Current {document_type.title()} Letter content:
 ---
-{truncated_content}
+{document_content}
 ---
 """
             
@@ -186,7 +195,22 @@ Current Time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
 User Question: {user_message}
 
-Please provide a helpful, accurate response. If you're suggesting text modifications, clearly mark them with "MODIFIED_TEXT:" followed by the new content."""
+Response Instructions:
+
+For questions/advice: Answer normally without "MODIFIED_TEXT:"
+
+For modification requests: You MUST follow this EXACT format:
+1. Brief explanation (1-2 sentences)
+2. New line with ONLY the text: MODIFIED_TEXT:
+3. THE COMPLETE DOCUMENT from beginning to end with changes integrated
+
+CRITICAL RULES:
+- Output the ENTIRE document after "MODIFIED_TEXT:" (not a summary, not a fragment, not just the changed part)
+- If the document has 50 paragraphs, output all 50 paragraphs (with the requested changes)
+- DO NOT truncate or shorten the document
+- DO NOT say "rest remains the same" - actually output everything
+- Include ALL sections: beginning, middle, and end
+- You have {self.generation_config['max_output_tokens']} tokens available - use them for complete output"""
             
             # Generar respuesta
             response = self.model.generate_content(full_prompt)
@@ -250,4 +274,3 @@ Please provide a helpful, accurate response. If you're suggesting text modificat
             print(f"✓ Cleared all memories for user {user_id}")
         except Exception as e:
             print(f"Error clearing memories: {e}")
-
