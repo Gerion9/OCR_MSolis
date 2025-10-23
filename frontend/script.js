@@ -1244,19 +1244,53 @@ function simulateTypingEffectCover(documentId, content) {
 }
 
 
-// Función auxiliar para extraer texto limpio del HTML
+// Función auxiliar para extraer texto limpio del HTML y reconstruir markdown
 function extractTextFromHTML(html) {
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = html;
     
-    // Reemplazar <br> con saltos de línea
-    tempDiv.querySelectorAll('br').forEach(br => {
-        br.replaceWith('\n');
+    let markdown = '';
+    
+    // Procesar cada elemento hijo
+    tempDiv.childNodes.forEach(node => {
+        if (node.nodeType === Node.ELEMENT_NODE) {
+            const tagName = node.tagName.toLowerCase();
+            const textContent = node.textContent.trim();
+            
+            if (!textContent) {
+                markdown += '\n';
+                return;
+            }
+            
+            // Convertir encabezados de HTML a markdown
+            if (tagName === 'h1') {
+                markdown += `# ${textContent}\n\n`;
+            } else if (tagName === 'h2') {
+                markdown += `## ${textContent}\n\n`;
+            } else if (tagName === 'h3') {
+                markdown += `### ${textContent}\n\n`;
+            } else if (tagName === 'h4') {
+                markdown += `#### ${textContent}\n\n`;
+            } else if (tagName === 'p') {
+                markdown += `${textContent}\n\n`;
+            } else if (tagName === 'div') {
+                // Para divs, procesar recursivamente
+                markdown += extractTextFromHTML(node.innerHTML);
+            } else {
+                markdown += `${textContent}\n\n`;
+            }
+        } else if (node.nodeType === Node.TEXT_NODE) {
+            const text = node.textContent.trim();
+            if (text) {
+                markdown += `${text}\n\n`;
+            }
+        }
     });
     
-    // Reemplazar </p> con doble salto de línea para preservar párrafos
-    const text = tempDiv.innerText;
-    return text;
+    // Limpiar múltiples líneas vacías consecutivas
+    markdown = markdown.replace(/\n{3,}/g, '\n\n');
+    
+    return markdown.trim();
 }
 
 // ==========================================
@@ -1480,7 +1514,10 @@ async function sendChatMessage() {
 
 // Aplicar modificación al documento
 function applyModification(modifiedText) {
-    if (!modifiedText) return;
+    if (!modifiedText) {
+        showError('No modified text provided');
+        return;
+    }
     
     const panel = document.querySelector(`.document-panel[data-document-id="${appState.activeDocumentId}"]`);
     if (!panel) {
@@ -1494,11 +1531,41 @@ function applyModification(modifiedText) {
         return;
     }
     
+    // Validar que el texto modificado no sea demasiado corto (posible fragmento)
+    const currentContent = extractTextFromHTML(contentEl.innerHTML);
+    const modifiedTextLength = modifiedText.length;
+    const currentContentLength = currentContent.length;
+    
+    // Si el texto modificado es menos del 30% del contenido actual, advertir
+    if (modifiedTextLength < currentContentLength * 0.3 && currentContentLength > 500) {
+        const confirmApply = confirm(
+            '⚠️ Warning: The modified text appears to be shorter than expected.\n\n' +
+            'This might indicate that only a fragment was provided instead of the complete document.\n\n' +
+            'Do you want to apply these changes anyway?\n\n' +
+            `Current document: ${currentContentLength} characters\n` +
+            `Modified text: ${modifiedTextLength} characters`
+        );
+        
+        if (!confirmApply) {
+            return;
+        }
+    }
+    
     // Convertir el texto modificado a HTML (markdown básico)
+    // IMPORTANTE: modifiedText debe contener el DOCUMENTO COMPLETO con las modificaciones integradas
     const htmlContent = convertMarkdownToHTML(modifiedText);
     
-    // Aplicar al documento
+    // Reemplazar TODO el contenido con el documento modificado completo
     contentEl.innerHTML = htmlContent;
+    
+    // Actualizar el contenido en el estado de la aplicación
+    if (appState.processedDocuments[appState.activeDocumentId]) {
+        if (appState.activeDocumentType === 'declaration') {
+            appState.processedDocuments[appState.activeDocumentId].declarationContent = modifiedText;
+        } else if (appState.activeDocumentType === 'cover') {
+            appState.processedDocuments[appState.activeDocumentId].coverLetterContent = modifiedText;
+        }
+    }
     
     // Cerrar modal y mostrar notificación
     closeChatModal();
