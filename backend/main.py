@@ -994,16 +994,25 @@ async def chat_with_ai(
         
         if has_modification:
             # Extraer el texto modificado
-            parts = response.split("MODIFIED_TEXT:")
+            parts = response.split("MODIFIED_TEXT:", 1)  # Solo dividir en la primera ocurrencia
             if len(parts) > 1:
                 # Tomar el texto después de "MODIFIED_TEXT:"
                 modified_text = parts[1].strip()
-                # Limpiar markdown si es necesario
+                
+                # Limpiar bloques de código markdown si los hay
                 if modified_text.startswith("```"):
                     # Quitar bloques de código markdown
-                    modified_text = modified_text.split("```")[1]
-                    if modified_text.startswith("\n"):
-                        modified_text = modified_text[1:]
+                    lines = modified_text.split("\n")
+                    # Remover primera línea (```)
+                    if lines[0].strip().startswith("```"):
+                        lines = lines[1:]
+                    # Remover última línea si es ```
+                    if lines and lines[-1].strip() == "```":
+                        lines = lines[:-1]
+                    modified_text = "\n".join(lines)
+                
+                # Limpiar espacios en blanco al inicio/final pero preservar estructura interna
+                modified_text = modified_text.strip()
         
         return ChatResponse(
             success=True,
