@@ -11,7 +11,7 @@ def update_dependencies():
     print("="*70)
     print("  Actualizando Dependencias - DeclarationLetterOnline")
     print("="*70)
-    print("\n📦 Actualizando paquetes...\n")
+    print("\nActualizando paquetes...\n")
     
     try:
         # Actualizar pip primero
@@ -23,19 +23,18 @@ def update_dependencies():
         subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", "requirements.txt", "--upgrade"])
         
         print("\n" + "="*70)
-        print("✓ Dependencias actualizadas exitosamente")
+        print("Dependencias actualizadas exitosamente")
         print("="*70)
-        print("\n💡 Ahora puedes ejecutar: python start_server.py\n")
+        print("\nAhora puedes ejecutar: python start_server.py\n")
         
     except subprocess.CalledProcessError as e:
-        print(f"\n❌ Error al actualizar dependencias: {e}")
+        print(f"\nError al actualizar dependencias: {e}")
         print("\nIntenta ejecutar manualmente:")
         print("  pip install -r requirements.txt --upgrade")
         sys.exit(1)
     except Exception as e:
-        print(f"\n❌ Error inesperado: {e}")
+        print(f"\nError inesperado: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
     update_dependencies()
-
