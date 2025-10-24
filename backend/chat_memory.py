@@ -162,30 +162,98 @@ Current document context will be provided with each query."""
             Respuesta generada por la IA
         """
         try:
-            # Obtener memorias relevantes
-            memories = self.get_user_memories(user_id, query=user_message)
+            # Construir prompt completo
+            full_prompt = self._build_prompt(user_message, user_id, document_content, document_type)
             
-            # Construir contexto de memoria
-            memory_context = ""
-            if memories:
-                memory_texts = [m.get("memory", "") for m in memories if m.get("memory")]
-                if memory_texts:
-                    memory_context = "Previous conversation context:\n" + "\n".join(memory_texts[:5])
+            # Generar respuesta
+            response = self.model.generate_content(full_prompt)
             
-            # Construir contexto del documento
-            document_context = ""
-            if document_content:
-                # Proporcionar el documento completo sin truncar
-                # El modelo tiene suficiente contexto para procesarlo
-                document_context = f"""
+            if response and response.text:
+                return response.text
+            else:
+                return "I apologize, but I couldn't generate a response. Please try rephrasing your question."
+                
+        except Exception as e:
+            print(f"Error generating response: {e}")
+            return f"I encountered an error while processing your request. Please try again."
+    
+    def generate_response_stream(
+        self, 
+        user_message: str, 
+        user_id: str,
+        document_content: Optional[str] = None,
+        document_type: str = "declaration"
+    ):
+        """
+        Genera una respuesta usando Gemini con streaming (para respuestas en tiempo real)
+        
+        Args:
+            user_message: Mensaje del usuario
+            user_id: ID del usuario
+            document_content: Contenido del documento actual (opcional)
+            document_type: Tipo de documento ('declaration' o 'cover')
+            
+        Yields:
+            str: Chunks de texto generados en tiempo real
+        """
+        try:
+            # Construir prompt completo
+            full_prompt = self._build_prompt(user_message, user_id, document_content, document_type)
+            
+            # Generar respuesta con streaming
+            response = self.model.generate_content(full_prompt, stream=True)
+            
+            for chunk in response:
+                if chunk.text:
+                    yield chunk.text
+                    
+        except Exception as e:
+            print(f"Error generating response stream: {e}")
+            yield f"I encountered an error while processing your request. Please try again."
+    
+    def _build_prompt(
+        self,
+        user_message: str,
+        user_id: str,
+        document_content: Optional[str] = None,
+        document_type: str = "declaration"
+    ) -> str:
+        """
+        Construye el prompt completo para el modelo
+        
+        Args:
+            user_message: Mensaje del usuario
+            user_id: ID del usuario
+            document_content: Contenido del documento actual
+            document_type: Tipo de documento
+            
+        Returns:
+            Prompt completo formateado
+        """
+        # Obtener memorias relevantes
+        memories = self.get_user_memories(user_id, query=user_message)
+        
+        # Construir contexto de memoria
+        memory_context = ""
+        if memories:
+            memory_texts = [m.get("memory", "") for m in memories if m.get("memory")]
+            if memory_texts:
+                memory_context = "Previous conversation context:\n" + "\n".join(memory_texts[:5])
+        
+        # Construir contexto del documento
+        document_context = ""
+        if document_content:
+            # Proporcionar el documento completo sin truncar
+            # El modelo tiene suficiente contexto para procesarlo
+            document_context = f"""
 Current {document_type.title()} Letter content:
 ---
 {document_content}
 ---
 """
-            
-            # Construir prompt completo
-            full_prompt = f"""{self.system_prompt}
+        
+        # Construir prompt completo
+        full_prompt = f"""{self.system_prompt}
 
 {memory_context}
 
@@ -211,18 +279,8 @@ CRITICAL RULES:
 - DO NOT say "rest remains the same" - actually output everything
 - Include ALL sections: beginning, middle, and end
 - You have {self.generation_config['max_output_tokens']} tokens available - use them for complete output"""
-            
-            # Generar respuesta
-            response = self.model.generate_content(full_prompt)
-            
-            if response and response.text:
-                return response.text
-            else:
-                return "I apologize, but I couldn't generate a response. Please try rephrasing your question."
-                
-        except Exception as e:
-            print(f"Error generating response: {e}")
-            return f"I encountered an error while processing your request. Please try again."
+        
+        return full_prompt
     
     def chat(
         self, 
