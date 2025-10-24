@@ -402,26 +402,40 @@ function extractApplicantName(markdownContent) {
     
     // Patrón 1: "I, [Nombre Apellido], declare..." o "I, [Nombre Apellido Apellido], declare..."
     let match = markdownContent.match(/I,\s+([A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*){1,4}),\s+(?:declare|solemnly|state)/i);
-    if (match) return match[1].trim();
+    if (match) return cleanApplicantName(match[1].trim());
     
     // Patrón 2: "My name is [Nombre Apellido]"
     match = markdownContent.match(/My name is\s+([A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*){1,4})(?:\.|,|\s+and)/i);
-    if (match) return match[1].trim();
+    if (match) return cleanApplicantName(match[1].trim());
     
-    // Patrón 3: Buscar en el encabezado "DECLARATION OF [Nombre Apellido]"
-    match = markdownContent.match(/DECLARATION OF\s+([A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*){1,4})/i);
-    if (match) return match[1].trim();
+    // Patrón 3: Buscar en el encabezado "DECLARATION OF [Nombre Apellido]" (antes de palabras como IN SUPPORT, FOR, etc.)
+    match = markdownContent.match(/DECLARATION OF\s+([A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*){1,4})(?:\s+(?:IN|FOR|TO|ON|REGARDING))?/i);
+    if (match) return cleanApplicantName(match[1].trim());
     
     // Patrón 4: "I am [Nombre Apellido]"
     match = markdownContent.match(/I am\s+([A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*){1,4})(?:\.|,|\s+and)/i);
-    if (match) return match[1].trim();
+    if (match) return cleanApplicantName(match[1].trim());
     
     // Patrón 5: Buscar nombre después de "Re:" o "RE:"
     match = markdownContent.match(/RE?:\s*(?:Application|Petition|Declaration|Case)\s+(?:of|for)\s+([A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*){1,4})/i);
-    if (match) return match[1].trim();
+    if (match) return cleanApplicantName(match[1].trim());
     
     // Si no se encuentra, retornar "Applicant"
     return "Applicant";
+}
+
+// Función auxiliar para limpiar el nombre del afectado
+function cleanApplicantName(name) {
+    // Eliminar palabras comunes que no son parte del nombre
+    const unwantedWords = ['IN', 'SUPPORT', 'FOR', 'TO', 'ON', 'REGARDING', 'OF', 'THE', 'A', 'AN'];
+    
+    // Dividir el nombre en palabras
+    const words = name.split(/\s+/);
+    
+    // Filtrar palabras no deseadas y reconstruir el nombre
+    const cleanedWords = words.filter(word => !unwantedWords.includes(word.toUpperCase()));
+    
+    return cleanedWords.join(' ').trim();
 }
 
 // Función para actualizar el título del panel con el nombre del afectado
@@ -973,6 +987,16 @@ async function downloadDocument(documentId, type) {
     const htmlContent = contentEl.innerHTML;
     const textContent = extractTextFromHTML(htmlContent);
     
+    // Obtener el nombre del afectado para el filename
+    let applicantName = "Applicant";
+    if (appState.processedDocuments[documentId]) {
+        applicantName = appState.processedDocuments[documentId].applicantName || "Applicant";
+    }
+    
+    // Crear el nombre del archivo según la estructura solicitada
+    const documentTypePrefix = type === 'declaration' ? 'DeclarationLetter' : 'CoverLetter';
+    const filename = `${documentTypePrefix}[${applicantName}]_draft.docx`;
+    
     try {
         // Enviar el contenido actual al backend para convertirlo a DOCX
         const response = await fetch(`${API_BASE_URL}/api/download-edited/${documentId}/${type}`, {
@@ -989,7 +1013,7 @@ async function downloadDocument(documentId, type) {
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `${type}_${documentId}.docx`;
+            a.download = filename;
             document.body.appendChild(a);
             a.click();
             window.URL.revokeObjectURL(url);
@@ -1443,7 +1467,7 @@ function hideTypingIndicator() {
     }
 }
 
-// Enviar mensaje al chat
+// Enviar mensaje al chat con streaming
 async function sendChatMessage() {
     const message = chatElements.input.value.trim();
     
@@ -1465,50 +1489,171 @@ async function sendChatMessage() {
     chatElements.input.disabled = true;
     chatElements.sendBtn.disabled = true;
     
-    // Mostrar indicador de escribiendo
-    showTypingIndicator();
+    // Crear placeholder para la respuesta del asistente
+    const responsePlaceholder = createChatMessagePlaceholder();
     
     try {
-        // Enviar al backend
-        const response = await fetch(`${API_BASE_URL}/api/chat`, {
+        // Construir la URL con el cuerpo del mensaje como parámetros POST
+        const requestBody = {
+            message: message,
+            document_id: appState.activeDocumentId,
+            document_type: appState.activeDocumentType,
+            user_id: `user_${appState.activeDocumentId}`
+        };
+        
+        // Crear conexión SSE usando fetch + ReadableStream
+        const response = await fetch(`${API_BASE_URL}/api/chat/stream`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({
-                message: message,
-                document_id: appState.activeDocumentId,
-                document_type: appState.activeDocumentType,
-                user_id: `user_${appState.activeDocumentId}`
-            })
+            body: JSON.stringify(requestBody)
         });
         
-        hideTypingIndicator();
-        
-        if (response.ok) {
-            const data = await response.json();
-            
-            // Agregar respuesta del asistente
-            addChatMessage(
-                data.response, 
-                false, 
-                data.has_modification,
-                data.modified_text
-            );
-        } else {
-            const error = await response.json();
-            showError(error.detail || 'Error communicating with AI assistant');
+        if (!response.ok) {
+            throw new Error('Chat stream request failed');
         }
         
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let fullResponse = '';
+        let hasModification = false;
+        let modifiedText = null;
+        
+        while (true) {
+            const { done, value } = await reader.read();
+            
+            if (done) break;
+            
+            // Decodificar el chunk
+            buffer += decoder.decode(value, { stream: true });
+            
+            // Procesar líneas completas
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || ''; // Guardar línea incompleta
+            
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    try {
+                        const data = JSON.parse(line.slice(6));
+                        
+                        if (data.type === 'content' && data.chunk) {
+                            fullResponse += data.chunk;
+                            updateChatMessagePlaceholder(responsePlaceholder, fullResponse);
+                            
+                        } else if (data.type === 'complete') {
+                            hasModification = data.has_modification || false;
+                            modifiedText = data.modified_text || null;
+                            
+                        } else if (data.type === 'error') {
+                            removeChatMessagePlaceholder(responsePlaceholder);
+                            showError(data.error || 'Error in chat response');
+                            return;
+                        }
+                    } catch (parseError) {
+                        console.error('Error parsing SSE data:', parseError);
+                    }
+                }
+            }
+        }
+        
+        // Finalizar el mensaje con el botón de aplicar si hay modificación
+        finalizeChatMessage(responsePlaceholder, fullResponse, hasModification, modifiedText);
+        
     } catch (error) {
-        hideTypingIndicator();
-        console.error('Chat error:', error);
+        console.error('Chat streaming error:', error);
+        removeChatMessagePlaceholder(responsePlaceholder);
         showError('Failed to communicate with AI assistant');
     } finally {
         // Rehabilitar input y botón
         chatElements.input.disabled = false;
         chatElements.sendBtn.disabled = false;
         chatElements.input.focus();
+    }
+}
+
+// Crear placeholder para mensaje del asistente
+function createChatMessagePlaceholder() {
+    // Remover mensaje de bienvenida si existe
+    const welcome = chatElements.messages.querySelector('.chat-welcome');
+    if (welcome) {
+        welcome.remove();
+    }
+    
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'chat-message chat-message-assistant';
+    messageDiv.dataset.placeholder = 'true';
+    
+    const bubble = document.createElement('div');
+    bubble.className = 'chat-bubble chat-bubble-assistant';
+    bubble.innerHTML = '<span class="chat-cursor">▊</span>';
+    
+    messageDiv.appendChild(bubble);
+    chatElements.messages.appendChild(messageDiv);
+    
+    // Scroll al final
+    chatElements.messages.scrollTop = chatElements.messages.scrollHeight;
+    
+    return messageDiv;
+}
+
+// Actualizar el placeholder con el contenido acumulado
+function updateChatMessagePlaceholder(placeholder, content) {
+    const bubble = placeholder.querySelector('.chat-bubble');
+    if (!bubble) return;
+    
+    // Formatear el contenido (convertir markdown básico a HTML)
+    let formattedContent = content
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/\n/g, '<br>');
+    
+    // Agregar cursor parpadeante al final
+    bubble.innerHTML = formattedContent + '<span class="chat-cursor">▊</span>';
+    
+    // Scroll al final
+    chatElements.messages.scrollTop = chatElements.messages.scrollHeight;
+}
+
+// Finalizar el mensaje (quitar cursor y agregar botón si es necesario)
+function finalizeChatMessage(placeholder, content, hasModification, modifiedText) {
+    const bubble = placeholder.querySelector('.chat-bubble');
+    if (!bubble) return;
+    
+    // Remover el atributo de placeholder
+    placeholder.removeAttribute('data-placeholder');
+    
+    // Formatear el contenido sin cursor
+    let formattedContent = content
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/\n/g, '<br>');
+    
+    bubble.innerHTML = formattedContent;
+    
+    // Agregar botón de aplicar si es necesario
+    if (hasModification && modifiedText) {
+        const applyBtn = document.createElement('button');
+        applyBtn.className = 'chat-apply-btn';
+        applyBtn.innerHTML = `
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+            </svg>
+            Apply to Document
+        `;
+        applyBtn.onclick = () => applyModification(modifiedText);
+        bubble.appendChild(applyBtn);
+    }
+    
+    // Scroll al final
+    chatElements.messages.scrollTop = chatElements.messages.scrollHeight;
+}
+
+// Remover el placeholder en caso de error
+function removeChatMessagePlaceholder(placeholder) {
+    if (placeholder && placeholder.parentNode) {
+        placeholder.remove();
     }
 }
 
