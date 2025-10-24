@@ -1032,6 +1032,115 @@ async def chat_with_ai(
         )
 
 
+@app.post("/api/chat/stream")
+async def chat_with_ai_stream(
+    chat_message: ChatMessage,
+    db: Session = Depends(get_db)
+):
+    """
+    Endpoint de chat con IA usando streaming (SSE) para respuestas en tiempo real
+    
+    Args:
+        chat_message: Mensaje del usuario con contexto del documento
+        db: Sesión de base de datos
+    
+    Returns:
+        StreamingResponse con Server-Sent Events
+    """
+    if not chat_system:
+        raise HTTPException(
+            status_code=503, 
+            detail="Sistema de chat no disponible. Verifique las API keys."
+        )
+    
+    async def event_generator():
+        try:
+            # Obtener el documento
+            doc_repo = DocumentRepository(db)
+            document = doc_repo.get_document(chat_message.document_id)
+            
+            if not document:
+                yield f"data: {json.dumps({'type': 'error', 'error': 'Documento no encontrado'})}\n\n"
+                return
+            
+            # Obtener el contenido del documento según el tipo
+            if chat_message.document_type == "declaration":
+                document_content = document.markdown_content
+            elif chat_message.document_type == "cover":
+                document_content = document.cover_letter_markdown
+            else:
+                yield f"data: {json.dumps({'type': 'error', 'error': 'Tipo de documento inválido'})}\n\n"
+                return
+            
+            if not document_content:
+                yield f"data: {json.dumps({'type': 'error', 'error': f'{chat_message.document_type.title()} Letter no generado aún'})}\n\n"
+                return
+            
+            # Generar ID de usuario único
+            user_id = chat_message.user_id or f"user_{chat_message.document_id}"
+            
+            # Generar respuesta con streaming
+            full_response = ""
+            try:
+                for chunk in chat_system.generate_response_stream(
+                    user_message=chat_message.message,
+                    user_id=user_id,
+                    document_content=document_content,
+                    document_type=chat_message.document_type
+                ):
+                    full_response += chunk
+                    # Enviar chunk al cliente
+                    yield f"data: {json.dumps({'type': 'content', 'chunk': chunk})}\n\n"
+                    await asyncio.sleep(0)  # Permitir que otros tasks se ejecuten
+                
+            except Exception as stream_error:
+                error_msg = f"Error en streaming: {str(stream_error)}"
+                yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
+                return
+            
+            # Verificar si la respuesta contiene texto modificado
+            has_modification = "MODIFIED_TEXT:" in full_response
+            modified_text = None
+            
+            if has_modification:
+                # Extraer el texto modificado
+                parts = full_response.split("MODIFIED_TEXT:", 1)
+                if len(parts) > 1:
+                    modified_text = parts[1].strip()
+                    
+                    # Limpiar bloques de código markdown si los hay
+                    if modified_text.startswith("```"):
+                        lines = modified_text.split("\n")
+                        if lines[0].strip().startswith("```"):
+                            lines = lines[1:]
+                        if lines and lines[-1].strip() == "```":
+                            lines = lines[:-1]
+                        modified_text = "\n".join(lines)
+                    
+                    modified_text = modified_text.strip()
+            
+            # Guardar en memoria después de completar
+            chat_system.save_conversation(user_id, chat_message.message, full_response)
+            
+            # Enviar evento de completado con información de modificación
+            yield f"data: {json.dumps({'type': 'complete', 'has_modification': has_modification, 'modified_text': modified_text})}\n\n"
+            
+        except Exception as e:
+            error_msg = f"Error inesperado: {str(e)}"
+            print(f"Error en chat stream: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
+
+
 @app.delete("/api/chat/memory/{user_id}")
 async def clear_chat_memory(user_id: str):
     """
