@@ -343,5 +343,3 @@ def save_docx_to_file(markdown_text: str, output_path: str) -> bool:
     except Exception as e:
         print(f"Error al guardar DOCX: {e}")
         return False
-
-
