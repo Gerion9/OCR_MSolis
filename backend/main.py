@@ -90,12 +90,12 @@ ai_processor: Optional[AIProcessor] = None
 if GEMINI_API_KEY and GEMINI_API_KEY != "tu_api_key_aqui":
     ai_processor = create_ai_processor(GEMINI_API_KEY, GEMINI_MODEL, GEMINI_TIMEOUT)
     if ai_processor:
-        print("✓ Procesador de IA inicializado correctamente")
-        print(f"✓ Timeout configurado: {GEMINI_TIMEOUT} segundos")
+        print("Procesador de IA inicializado correctamente")
+        print(f"Timeout configurado: {GEMINI_TIMEOUT} segundos")
     else:
-        print("✗ Error al inicializar procesador de IA")
+        print("Error al inicializar procesador de IA")
 else:
-    print("⚠ Advertencia: API key de Gemini no configurada")
+    print("Advertencia: API key de Gemini no configurada")
 
 # Inicializar sistema de chat con memoria
 chat_system: Optional[ChatMemorySystem] = None
@@ -106,11 +106,11 @@ if GEMINI_API_KEY and MEM0_API_KEY:
             mem0_api_key=MEM0_API_KEY,
             google_api_key=GEMINI_API_KEY
         )
-        print("✓ Sistema de chat con memoria inicializado correctamente")
+        print("Sistema de chat con memoria inicializado correctamente")
     except Exception as e:
-        print(f"✗ Error al inicializar sistema de chat: {e}")
+        print(f"Error al inicializar sistema de chat: {e}")
 else:
-    print("⚠ Advertencia: API keys no configuradas para el sistema de chat")
+    print("Advertencia: API keys no configuradas para el sistema de chat")
 
 
 # Montar archivos estáticos
