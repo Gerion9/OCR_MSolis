@@ -87,8 +87,8 @@ class AIProcessor:
             safety_settings=self.safety_settings
         )
         
-        print(f"✓ Procesador de IA inicializado con modelo: {model_name}")
-        print(f"✓ Timeout configurado: {request_timeout} segundos")
+        print(f"Procesador de IA inicializado con modelo: {model_name}")
+        print(f"Timeout configurado: {request_timeout} segundos")
     
     def load_xml_files(self, system_prompt_path: str, declaration_path: str) -> bool:
         """
@@ -110,11 +110,11 @@ class AIProcessor:
             with open(declaration_path, 'r', encoding='utf-8') as f:
                 self.declaration_guide = f.read()
             
-            print("✓ Archivos XML de Declaration Letter cargados correctamente")
+            print("Archivos XML de Declaration Letter cargados correctamente")
             return True
         
         except Exception as e:
-            print(f"✗ Error al cargar archivos XML de Declaration Letter: {e}")
+            print(f"Error al cargar archivos XML de Declaration Letter: {e}")
             return False
     
     def load_cover_letter_xml_files(self, system_prompt_path: str, structure_path: str) -> bool:
@@ -137,11 +137,11 @@ class AIProcessor:
             with open(structure_path, 'r', encoding='utf-8') as f:
                 self.cover_letter_structure = f.read()
             
-            print("✓ Archivos XML de Cover Letter cargados correctamente")
+            print("Archivos XML de Cover Letter cargados correctamente")
             return True
         
         except Exception as e:
-            print(f"✗ Error al cargar archivos XML de Cover Letter: {e}")
+            print(f"Error al cargar archivos XML de Cover Letter: {e}")
             return False
     
     def extract_text_from_file(self, file_path: str) -> Optional[str]:
@@ -255,22 +255,22 @@ class AIProcessor:
             response = self.model.generate_content(full_prompt)
             
             elapsed_time = time.time() - start_time
-            print(f"✓ Generación completada en {elapsed_time:.2f} segundos")
+            print(f"Generacion completada en {elapsed_time:.2f} segundos")
             
             if response and response.text:
-                print("✓ Declaration letter generada exitosamente")
+                print("Declaration letter generada exitosamente")
                 return response.text
             else:
-                print("✗ No se pudo generar contenido")
+                print("No se pudo generar contenido")
                 return None
         
         except Exception as e:
             error_msg = str(e)
             if "timeout" in error_msg.lower() or "timed out" in error_msg.lower() or "ReadTimeout" in str(type(e).__name__):
-                print(f"✗ Error: La generación excedió el tiempo límite de {self.request_timeout}s")
-                print("Sugerencia: El documento es muy largo o el servidor está ocupado. Intente nuevamente.")
+                print(f"Error: La generacion excedio el tiempo limite de {self.request_timeout}s")
+                print("Sugerencia: El documento es muy largo o el servidor esta ocupado. Intente nuevamente.")
             else:
-                print(f"✗ Error al generar declaration letter: {e}")
+                print(f"Error al generar declaration letter: {e}")
             raise Exception(f"Error al generar declaration letter: {error_msg}")
     
     def _build_prompt(self, questionnaire_text: str) -> str:
@@ -327,7 +327,7 @@ Genera la declaration letter ahora:
         try:
             # Validar que se hayan cargado los archivos XML de Cover Letter
             if not self.cover_letter_system_prompt or not self.cover_letter_structure:
-                print("✗ Archivos XML de Cover Letter no cargados")
+                print("Archivos XML de Cover Letter no cargados")
                 return None
             
             # Construir el prompt para el Cover Letter
@@ -343,22 +343,22 @@ Genera la declaration letter ahora:
             response = self.cover_letter_model.generate_content(full_prompt)
             
             elapsed_time = time.time() - start_time
-            print(f"✓ Generación completada en {elapsed_time:.2f} segundos")
+            print(f"Generacion completada en {elapsed_time:.2f} segundos")
             
             if response and response.text:
-                print("✓ Cover Letter generado exitosamente")
+                print("Cover Letter generado exitosamente")
                 return response.text
             else:
-                print("✗ No se pudo generar contenido para el Cover Letter")
+                print("No se pudo generar contenido para el Cover Letter")
                 return None
         
         except Exception as e:
             error_msg = str(e)
             if "timeout" in error_msg.lower() or "timed out" in error_msg.lower() or "ReadTimeout" in str(type(e).__name__):
-                print(f"✗ Error: La generación excedió el tiempo límite de {self.request_timeout}s")
-                print("Sugerencia: El documento es muy largo o el servidor está ocupado. Intente nuevamente.")
+                print(f"Error: La generacion excedio el tiempo limite de {self.request_timeout}s")
+                print("Sugerencia: El documento es muy largo o el servidor esta ocupado. Intente nuevamente.")
             else:
-                print(f"✗ Error al generar Cover Letter: {e}")
+                print(f"Error al generar Cover Letter: {e}")
             raise Exception(f"Error al generar Cover Letter: {error_msg}")
     
     def _build_cover_letter_prompt(self, declaration_letter_content: str) -> str:
@@ -444,15 +444,15 @@ Genera el Cover Letter ahora:
                     yield chunk.text
             
             elapsed_time = time.time() - start_time
-            print(f"✓ Generación con streaming completada en {elapsed_time:.2f} segundos")
+            print(f"Generacion con streaming completada en {elapsed_time:.2f} segundos")
         
         except Exception as e:
             error_msg = str(e)
             if "timeout" in error_msg.lower() or "timed out" in error_msg.lower() or "ReadTimeout" in str(type(e).__name__):
-                print(f"✗ Error: La generación excedió el tiempo límite de {self.request_timeout}s")
-                print("Sugerencia: El documento es muy largo o el servidor está ocupado. Intente nuevamente.")
+                print(f"Error: La generacion excedio el tiempo limite de {self.request_timeout}s")
+                print("Sugerencia: El documento es muy largo o el servidor esta ocupado. Intente nuevamente.")
             else:
-                print(f"✗ Error al generar declaration letter (streaming): {e}")
+                print(f"Error al generar declaration letter (streaming): {e}")
             raise Exception(f"Error al generar declaration letter: {error_msg}")
     
     def generate_cover_letter_stream(self, declaration_letter_content: str):
@@ -468,7 +468,7 @@ Genera el Cover Letter ahora:
         try:
             # Validar que se hayan cargado los archivos XML de Cover Letter
             if not self.cover_letter_system_prompt or not self.cover_letter_structure:
-                print("✗ Archivos XML de Cover Letter no cargados")
+                print("Archivos XML de Cover Letter no cargados")
                 raise Exception("Cover Letter XML files not loaded")
             
             # Construir el prompt para el Cover Letter
@@ -488,15 +488,15 @@ Genera el Cover Letter ahora:
                     yield chunk.text
             
             elapsed_time = time.time() - start_time
-            print(f"✓ Generación de Cover Letter con streaming completada en {elapsed_time:.2f} segundos")
+            print(f"Generacion de Cover Letter con streaming completada en {elapsed_time:.2f} segundos")
         
         except Exception as e:
             error_msg = str(e)
             if "timeout" in error_msg.lower() or "timed out" in error_msg.lower() or "ReadTimeout" in str(type(e).__name__):
-                print(f"✗ Error: La generación excedió el tiempo límite de {self.request_timeout}s")
-                print("Sugerencia: El documento es muy largo o el servidor está ocupado. Intente nuevamente.")
+                print(f"Error: La generacion excedio el tiempo limite de {self.request_timeout}s")
+                print("Sugerencia: El documento es muy largo o el servidor esta ocupado. Intente nuevamente.")
             else:
-                print(f"✗ Error al generar Cover Letter (streaming): {e}")
+                print(f"Error al generar Cover Letter (streaming): {e}")
             raise Exception(f"Error al generar Cover Letter: {error_msg}")
     
     def validate_api_key(self) -> bool:
@@ -512,7 +512,7 @@ Genera el Cover Letter ahora:
             response = test_model.generate_content("Hello")
             return response is not None
         except Exception as e:
-            print(f"✗ Error al validar API key: {e}")
+            print(f"Error al validar API key: {e}")
             return False
 
 
@@ -550,11 +550,11 @@ def create_ai_processor(api_key: str, model_name: str = "gemini-1.5-pro", reques
         
         # Cargar archivos XML de Cover Letter
         if not processor.load_cover_letter_xml_files(str(cover_letter_system_prompt_path), str(cover_letter_structure_path)):
-            print("⚠ Advertencia: No se pudieron cargar archivos XML de Cover Letter")
+            print("Advertencia: No se pudieron cargar archivos XML de Cover Letter")
             # No falla la creación del procesador, solo advierte
         
         return processor
     
     except Exception as e:
-        print(f"✗ Error al crear procesador de IA: {e}")
+        print(f"Error al crear procesador de IA: {e}")
         return None
