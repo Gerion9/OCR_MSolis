@@ -137,7 +137,7 @@ Current document context will be provided with each query."""
                     messages=conversation,
                     user_id=user_id
                 )
-                print(f"✓ Memory saved for user {user_id}")
+                print(f"Memory saved for user {user_id}")
             
         except Exception as e:
             print(f"Error saving memory: {e}")
@@ -329,6 +329,6 @@ CRITICAL RULES:
             for memory in all_memories:
                 if "id" in memory:
                     self.memory_client.delete(memory["id"])
-            print(f"✓ Cleared all memories for user {user_id}")
+            print(f"Cleared all memories for user {user_id}")
         except Exception as e:
             print(f"Error clearing memories: {e}")
