@@ -16,7 +16,7 @@ class AIProcessor:
     Procesador de IA para generar declaration letters usando Gemini
     """
     
-    def __init__(self, api_key: str, model_name: str = "gemini-2.5-pro", request_timeout: int = 300):
+    def __init__(self, api_key: str, model_name: str, request_timeout: int = 300):
         """
         Inicializa el procesador de IA
         
@@ -292,25 +292,6 @@ class AIProcessor:
 
 CUESTIONARIO DEL AFECTADO:
 {questionnaire_text}
-
----
-
-INSTRUCCIONES FINALES:
-Basándote en el System Prompt, la Declaration Guide y el cuestionario proporcionado, genera una Declaration Letter completa en formato Markdown. 
-
-IMPORTANTE:
-1. Usa EXACTAMENTE el formato Markdown especificado (## para secciones, numeración consecutiva de párrafos)
-2. NO incluyas texto introductorio de tu parte como asistente
-3. NO incluyas disclaimers o notas del AI
-4. Genera SOLAMENTE el contenido de la declaration letter
-5. Sigue TODAS las reglas del System Prompt, especialmente:
-   - Formato de título en dos líneas con ##
-   - Numeración consecutiva de párrafos (1. 2. 3. etc.)
-   - Secciones en el orden especificado
-   - Lenguaje accesible sin jerga legal
-   - Párrafos largos y detallados
-
-Genera la declaration letter ahora:
 """
         return prompt
     
@@ -380,59 +361,22 @@ Genera la declaration letter ahora:
 
 DECLARATION LETTER DEL SOBREVIVIENTE:
 {declaration_letter_content}
-
----
-
-INSTRUCCIONES FINALES:
-Basándote en el System Prompt de Cover Letter, la estructura de Cover Letter y el Declaration Letter proporcionado, genera un Cover Letter completo y profesional para la petición de T-Visa.
-
-IMPORTANTE:
-1. Usa EXACTAMENTE la estructura de secciones I-VI especificada
-2. Escribe en tercera persona neutral ("the applicant", "the declarant", "the victim")
-3. Extrae información relevante del Declaration Letter y mapéala a los elementos de elegibilidad
-4. Incluye citas del Declaration Letter usando el formato [Decl. ¶ n]
-5. Incluye citas de regulaciones cuando sean requeridas (8 C.F.R., INA)
-6. Usa párrafos extremadamente largos (10-14 oraciones por párrafo)
-7. Incluye mínimo 6 citas textuales multilínea del Declaration Letter
-8. NO incluyas texto introductorio de tu parte como asistente
-9. NO incluyas disclaimers o notas del AI
-10. Genera SOLAMENTE el contenido del Cover Letter
-11. Mínimo 2,400 palabras en total
-12. Sigue el estilo formal persuasivo narrativo especificado
-13. Evita usar guiones largos (em dashes)
-
-El Cover Letter debe incluir:
-- Fecha y dirección USCIS
-- RE: línea con nombre del aplicante
-- Sección I: APPLICANT IS A VICTIM OF A SEVERE FORM OF TRAFFICKING IN PERSONS
-- Sección II: APPLICANT IS PHYSICALLY PRESENT IN THE U.S. DUE TO TRAFFICKING
-- Sección III: APPLICANT HAS COMPLIED WITH REASONABLE REQUESTS FOR ASSISTANCE
-- Sección IV: APPLICANT WOULD SUFFER EXTREME HARDSHIP IF REMOVED FROM THE U.S.
-- Sección V: APPLICANT IS ELIGIBLE FOR A WAIVER OF INADMISSIBILITY
-- Sección VI: CONCLUSION
-- Bloque de firma profesional
-
-Genera el Cover Letter ahora:
 """
         return prompt
     
     def generate_declaration_letter_stream(self, questionnaire_text: str):
         """
         Genera una declaration letter basada en el cuestionario usando streaming
-        
         Args:
-            questionnaire_text: Texto del cuestionario del afectado
-        
+            questionnaire_text: Texto del cuestionario del afectado     
         Yields:
             str: Chunks de texto generados en tiempo real
         """
         try:
             # Construir el prompt completo
             full_prompt = self._build_prompt(questionnaire_text)
-            
             print("Generando declaration letter con IA (streaming)...")
             print(f"Usando timeout de {self.request_timeout} segundos...")
-            
             start_time = time.time()
             
             # Generar respuesta con streaming
@@ -442,7 +386,6 @@ Genera el Cover Letter ahora:
             for chunk in response:
                 if chunk.text:
                     yield chunk.text
-            
             elapsed_time = time.time() - start_time
             print(f"Generacion con streaming completada en {elapsed_time:.2f} segundos")
         
@@ -518,7 +461,7 @@ Genera el Cover Letter ahora:
 
 # ==================== FUNCIONES DE UTILIDAD ====================
 
-def create_ai_processor(api_key: str, model_name: str = "gemini-1.5-pro", request_timeout: int = 300) -> Optional[AIProcessor]:
+def create_ai_processor(api_key: str, model_name: str, request_timeout: int = 300) -> Optional[AIProcessor]:
     """
     Crea y configura un procesador de IA
     
