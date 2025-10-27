@@ -55,7 +55,7 @@ MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
 # Configuración de la API de Gemini
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-pro")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
 GEMINI_TIMEOUT = int(os.getenv("GEMINI_TIMEOUT", "300"))  # 5 minutos por defecto
 
 # Configuración de mem0 para chat
@@ -104,9 +104,11 @@ if GEMINI_API_KEY and MEM0_API_KEY:
     try:
         chat_system = ChatMemorySystem(
             mem0_api_key=MEM0_API_KEY,
-            google_api_key=GEMINI_API_KEY
+            google_api_key=GEMINI_API_KEY,
+            model_name=GEMINI_MODEL
         )
         print("Sistema de chat con memoria inicializado correctamente")
+        print(f"Modelo configurado: {GEMINI_MODEL}")
     except Exception as e:
         print(f"Error al inicializar sistema de chat: {e}")
 else:
