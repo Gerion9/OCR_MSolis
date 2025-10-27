@@ -15,16 +15,18 @@ class ChatMemorySystem:
     Sistema de chat con memoria a largo plazo usando mem0
     """
     
-    def __init__(self, mem0_api_key: str, google_api_key: str):
+    def __init__(self, mem0_api_key: str, google_api_key: str, model_name: str):
         """
         Inicializa el sistema de chat con memoria
         
         Args:
             mem0_api_key: API key de mem0
             google_api_key: API key de Google Gemini
+            model_name: Nombre del modelo de Gemini a usar
         """
         self.mem0_api_key = mem0_api_key
         self.google_api_key = google_api_key
+        self.model_name = model_name
         
         # Inicializar mem0
         self.memory_client = MemoryClient(api_key=mem0_api_key)
@@ -41,7 +43,7 @@ class ChatMemorySystem:
         }
         
         self.model = genai.GenerativeModel(
-            model_name="gemini-2.0-flash-exp",  # Modelo correcto con mayor capacidad
+            model_name=model_name,
             generation_config=self.generation_config
         )
         
@@ -252,7 +254,35 @@ Current {document_type.title()} Letter content:
 ---
 """
         
-        # Construir prompt completo
+#         # Construir prompt completo para 2.5 pro
+#         full_prompt = f"""{self.system_prompt}
+
+# {memory_context}
+
+# {document_context}
+
+# Current Time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+
+# User Question: {user_message}
+
+# Response Instructions:
+
+# For questions/advice: Answer normally without "MODIFIED_TEXT:"
+
+# For modification requests: You MUST follow this EXACT format:
+# 1. Brief explanation (1-2 sentences)
+# 2. New line with ONLY the text: MODIFIED_TEXT:
+# 3. THE COMPLETE DOCUMENT from beginning to end with changes integrated
+
+# CRITICAL RULES:
+# - Output the ENTIRE document after "MODIFIED_TEXT:" (not a summary, not a fragment, not just the changed part)
+# - If the document has 50 paragraphs, output all 50 paragraphs (with the requested changes)
+# - DO NOT truncate or shorten the document
+# - DO NOT say "rest remains the same" - actually output everything
+# - Include ALL sections: beginning, middle, and end
+# - You have {self.generation_config['max_output_tokens']} tokens available - use them for complete output"""
+        
+            # Construir prompt completo para flash lite
         full_prompt = f"""{self.system_prompt}
 
 {memory_context}
@@ -279,7 +309,7 @@ CRITICAL RULES:
 - DO NOT say "rest remains the same" - actually output everything
 - Include ALL sections: beginning, middle, and end
 - You have {self.generation_config['max_output_tokens']} tokens available - use them for complete output"""
-        
+
         return full_prompt
     
     def chat(
