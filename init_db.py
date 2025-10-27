@@ -27,30 +27,28 @@ def main():
     
     # Obtener URL de la base de datos
     database_url = os.getenv("DATABASE_URL", "sqlite:///./declaration_letters.db")
-    print(f"📦 Base de datos: {database_url}")
+    print(f"Base de datos: {database_url}")
     
     try:
         # Inicializar base de datos
-        print("\n🔧 Creando tablas...")
+        print("\nCreando tablas...")
         db_manager = init_database(database_url)
         
-        print("\n✅ Base de datos inicializada exitosamente")
+        print("\nBase de datos inicializada exitosamente")
         print("\nTablas creadas:")
         print("  - documents: Almacena información de documentos subidos")
         print("  - processing_logs: Registra el historial de procesamiento")
         
         print("\n" + "="*60)
-        print("¡Listo! Puedes iniciar la aplicación ahora.")
+        print("Listo! Puedes iniciar la aplicacion ahora.")
         print("="*60 + "\n")
         
         return True
         
     except Exception as e:
-        print(f"\n❌ Error al inicializar la base de datos: {e}")
+        print(f"\nError al inicializar la base de datos: {e}")
         return False
 
 if __name__ == "__main__":
     success = main()
     sys.exit(0 if success else 1)
-
-

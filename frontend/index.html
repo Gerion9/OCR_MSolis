@@ -27,158 +27,64 @@
         </div>
     </header>
 
-    <!-- SECCIÓN 2: LEYENDA DE ADVERTENCIA -->
-    <section class="warning-section">
-        <div class="container">
-            <div class="warning-box">
-                <div class="warning-icon"><img width="48" height="48" src="frontend\images\warning-1-svgrepo-com.svg"></div>
-                <div class="warning-content">
-                    <h2>Disclaimer</h2>
-                    <p>This is a AI generated document and it can not provide legal advice.<br>All outputs are drafts intended for review by a licensed attorney or accredited representative.</p>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- SECCIÓN 3: SUBIDA DEL ARCHIVO -->
+    <!-- SECCIÓN 2: SUBIDA DEL ARCHIVO -->
     <section class="upload-section" id="uploadSection">
         <div class="container">
             <h2 class="section-title">Upload questionnaire</h2>
-            <p class="section-subtitle">Upload the questionnaire of the affected person to generate a Declaration Letter</p>
+            <p class="section-subtitle">Upload questionnaires to generate Declaration Letters</p>
             
-            <div class="upload-container">
-                <div class="upload-box" id="uploadBox">
-                    <input type="file" id="fileInput" accept=".docx,.pdf,.txt,.doc" hidden>
+            <div class="upload-container-new">
+                <!-- Upload Box - Siempre visible -->
+                <div class="upload-box-new" id="uploadBox">
+                    <input type="file" id="fileInput" accept=".docx,.pdf,.txt,.doc" hidden multiple>
                     
-                    <div class="upload-content" id="uploadContent">
-                        <svg class="upload-icon" width="80" height="80" viewBox="0 0 80 80" fill="none">
+                    <div class="upload-content-new">
+                        <svg class="upload-icon" width="60" height="60" viewBox="0 0 80 80" fill="none">
                             <path d="M40 10V50M40 10L25 25M40 10L55 25" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
                             <path d="M70 50V65C70 67.7614 68.9464 70.4096 67.0711 72.2839C65.1957 74.1584 62.5478 75.2119 59.7864 75.2119H20.2136C17.4522 75.2119 14.8043 74.1584 12.9289 72.2839C11.0536 70.4096 10 67.7614 10 65V50" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
                         </svg>
-                        <h3>Drag and drop your file here</h3>
+                        <h3>Drag and drop files here</h3>
                         <p>or</p>
-                        <button class="btn btn-primary" id="selectFileBtn">Select archive</button>
-                        <p class="file-info">Supported formats: DOCX, PDF, TXT (Max. 10MB)</p>
-                    </div>
-
-                    <div class="upload-progress hidden" id="uploadProgress">
-                        <div class="progress-bar">
-                            <div class="progress-fill" id="progressFill"></div>
-                        </div>
-                        <p id="progressText">Uploading archive...</p>
+                        <button class="btn btn-primary" id="selectFileBtn">Select Files</button>
+                        <p class="file-info">Supported: DOCX, PDF, TXT (Max. 10MB each)</p>
                     </div>
                 </div>
 
-                <div class="file-selected hidden" id="fileSelected">
-                    <div class="file-card">
-                        <div class="file-details">
-                            <h4 id="fileName">archivo.docx</h4>
-                            <p id="fileSize">1.2 MB</p>
-                        </div>
-                        <button class="btn-icon" id="removeFileBtn" title="Eliminar archivo">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                                <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                            </svg>
-                        </button>
+                <!-- Lista de documentos cargados -->
+                <div class="documents-queue hidden" id="documentsQueue">
+                    <div class="queue-header">
+                        <h3>Documents Ready to Process</h3>
+                        <span class="queue-count" id="queueCount">0 files</span>
                     </div>
-                    <button class="btn btn-success btn-large" id="generateBtn">
+                    <div class="queue-list" id="queueList">
+                        <!-- Los documentos se agregarán dinámicamente aquí -->
+                    </div>
+                    <button class="btn btn-success btn-large btn-full-width" id="processAllBtn">
                         <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
                             <path d="M10 3V17M10 17L15 12M10 17L5 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                         </svg>
-                        Generate Declaration Letter
+                        Process All Documents
                     </button>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- SECCIÓN 4: VISUALIZACIÓN DE LA DECLARACIÓN -->
+    <!-- SECCIÓN 3: VISUALIZACIÓN DE LOS DOCUMENTOS -->
     <section class="preview-section hidden" id="previewSection">
-        <div class="container">
-            <h2 class="section-title">Declaration Letter Generated</h2>
-            <p class="section-subtitle">Generated Declaration Letter preview</p>
-
-            <div class="preview-container">
-                <div class="document-preview" id="documentPreview">
-                    <div class="loading-spinner" id="loadingSpinner">
-                        <div class="spinner"></div>
-                        <p>Generating Declaration Letter...</p>
-                        <p class="loading-subtext">Please wait</p>
-                    </div>
-
-                    <div class="preview-content hidden" id="previewContent">
-                        <!-- El contenido se cargará dinámicamente -->
-                    </div>
-                </div>
-
-                <div class="action-buttons" id="actionButtons">
-                    <button class="btn btn-primary btn-large" id="downloadBtn">
-                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                            <path d="M10 3V13M10 13L14 9M10 13L6 9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                            <path d="M17 13V15C17 15.5304 16.7893 16.0391 16.4142 16.4142C16.0391 16.7893 15.5304 17 15 17H5C4.46957 17 3.96086 16.7893 3.58579 16.4142C3.21071 16.0391 3 15.5304 3 15V13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                        </svg>
-                        Download Document
-                    </button>
-                    <button class="btn btn-secondary btn-large" id="regenerateBtn">
-                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                            <path d="M17 10C17 13.866 13.866 17 10 17C6.134 17 3 13.866 3 10C3 6.134 6.134 3 10 3C11.848 3 13.536 3.752 14.778 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                            <path d="M12 5H17V10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                        Regenerate Document
-                    </button>
-                    <button class="btn btn-outline btn-large" id="newDocumentBtn">
-                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                            <path d="M10 5V15M5 10H15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                        </svg>
-                        New Document
-                    </button>
-                    <button class="btn btn-success btn-large" id="generateCoverLetterBtn">
-                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                            <path d="M9 2C9 1.44772 9.44772 1 10 1H14C14.5523 1 15 1.44772 15 2V5H18C18.5523 5 19 5.44772 19 6V18C19 18.5523 18.5523 19 18 19H6C5.44772 19 5 18.5523 5 18V6C5 5.44772 5.44772 5 6 5H9V2Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                            <path d="M9 9H15M9 13H15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                        </svg>
-                        Generate Cover Letter
-                    </button>
+        <div class="container-wide">
+            <h2 class="section-title">Generated Documents</h2>
+            
+            <!-- Tabs de navegación entre documentos -->
+            <div class="documents-tabs hidden" id="documentsTabs">
+                <div class="tabs-header" id="tabsHeader">
+                    <!-- Las tabs se agregarán dinámicamente -->
                 </div>
             </div>
-        </div>
-    </section>
 
-    <!-- SECCIÓN 5: VISUALIZACIÓN DEL COVER LETTER -->
-    <section class="preview-section hidden" id="coverLetterSection">
-        <div class="container">
-            <h2 class="section-title">Cover Letter Generated</h2>
-            <p class="section-subtitle">Generated Cover Letter preview</p>
-
-            <div class="preview-container">
-                <div class="document-preview" id="coverLetterPreview">
-                    <div class="loading-spinner" id="coverLetterLoadingSpinner">
-                        <div class="spinner"></div>
-                        <p>Generating Cover Letter...</p>
-                        <p class="loading-subtext">This may take 30-60 seconds</p>
-                    </div>
-
-                    <div class="preview-content hidden" id="coverLetterContent">
-                        <!-- El contenido se cargará dinámicamente -->
-                    </div>
-                </div>
-
-                <div class="action-buttons" id="coverLetterActionButtons">
-                    <button class="btn btn-primary btn-large" id="downloadCoverLetterBtn">
-                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                            <path d="M10 3V13M10 13L14 9M10 13L6 9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                            <path d="M17 13V15C17 15.5304 16.7893 16.0391 16.4142 16.4142C16.0391 16.7893 15.5304 17 15 17H5C4.46957 17 3.96086 16.7893 3.58579 16.4142C3.21071 16.0391 3 15.5304 3 15V13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                        </svg>
-                        Download Cover Letter
-                    </button>
-                    <button class="btn btn-secondary btn-large" id="regenerateCoverLetterBtn">
-                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                            <path d="M17 10C17 13.866 13.866 17 10 17C6.134 17 3 13.866 3 10C3 6.134 6.134 3 10 3C11.848 3 13.536 3.752 14.778 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                            <path d="M12 5H17V10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                        Regenerate Cover Letter
-                    </button>
-                </div>
+            <!-- Contenedor de documentos con tabs -->
+            <div class="documents-viewer" id="documentsViewer">
+                <!-- Cada documento tendrá su propio panel -->
             </div>
         </div>
     </section>
@@ -197,7 +103,7 @@
                 <button class="btn-close" id="closeModalBtn">&times;</button>
             </div>
             <div class="modal-body">
-                <p id="errorMessage">An</p>
+                <p id="errorMessage">An error occurred</p>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-primary" id="closeErrorBtn">Cerrar</button>
@@ -205,7 +111,56 @@
         </div>
     </div>
 
-    <script src="/frontend/script.js"></script>
+    <!-- Chat Modal -->
+    <div class="chat-modal hidden" id="chatModal">
+        <div class="chat-modal-overlay"></div>
+        <div class="chat-modal-content">
+            <div class="chat-modal-header">
+                <div>
+                    <h3>🤖 AI Assistant</h3>
+                    <p class="chat-subtitle">Ask me to improve or modify your document</p>
+                </div>
+                <button class="btn-close-chat" id="closeChatBtn">&times;</button>
+            </div>
+            <div class="chat-modal-body" id="chatMessages">
+                <div class="chat-welcome">
+                    <div class="chat-welcome-icon">💬</div>
+                    <h4>Welcome to AI Assistant!</h4>
+                    <p>I can help you:</p>
+                    <ul>
+                        <li>Improve specific sections of your document</li>
+                        <li>Rewrite paragraphs with better clarity</li>
+                        <li>Answer questions about the content</li>
+                        <li>Suggest legal writing improvements</li>
+                    </ul>
+                    <p class="chat-tip">💡 <strong>Tip:</strong> Ask me "Rewrite the first paragraph" or "Make this sound more formal"</p>
+                </div>
+            </div>
+            <div class="chat-modal-footer">
+                <div class="chat-input-container">
+                    <textarea 
+                        id="chatInput" 
+                        placeholder="Ask me anything about your document..."
+                        rows="2"
+                    ></textarea>
+                    <button class="btn btn-primary chat-send-btn" id="sendChatBtn">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                            <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 8L11 13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        Send
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Botón flotante de chat -->
+    <button class="chat-fab hidden" id="chatFab" title="Open AI Assistant">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        </svg>
+    </button>
+
+    <script src="/frontend/script.js?v=2.2"></script>
 </body>
 </html>
-
