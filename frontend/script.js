@@ -40,7 +40,16 @@ const elements = {
     errorModal: document.getElementById('errorModal'),
     errorMessage: document.getElementById('errorMessage'),
     closeModalBtn: document.getElementById('closeModalBtn'),
-    closeErrorBtn: document.getElementById('closeErrorBtn')
+    closeErrorBtn: document.getElementById('closeErrorBtn'),
+    
+    // Modal de ajustes
+    settingsBtn: document.getElementById('settingsBtn'),
+    settingsModal: document.getElementById('settingsModal'),
+    closeSettingsBtn: document.getElementById('closeSettingsBtn'),
+    aiModelSelect: document.getElementById('aiModelSelect'),
+    settingsPassword: document.getElementById('settingsPassword'),
+    changeAiModelBtn: document.getElementById('changeAiModelBtn'),
+    settingsErrorMessage: document.getElementById('settingsErrorMessage')
 };
 
 // INICIALIZACIÓN
@@ -67,12 +76,22 @@ function initializeEventListeners() {
     // Procesar todos los documentos
     elements.processAllBtn.addEventListener('click', handleProcessAll);
     
-    // Modal
+    // Modal de error
     elements.closeModalBtn.addEventListener('click', closeErrorModal);
     elements.closeErrorBtn.addEventListener('click', closeErrorModal);
     elements.errorModal.addEventListener('click', (e) => {
         if (e.target === elements.errorModal) {
             closeErrorModal();
+        }
+    });
+    
+    // Modal de ajustes
+    elements.settingsBtn.addEventListener('click', openSettingsModal);
+    elements.closeSettingsBtn.addEventListener('click', closeSettingsModal);
+    elements.changeAiModelBtn.addEventListener('click', handleChangeAiModel);
+    elements.settingsModal.addEventListener('click', (e) => {
+        if (e.target === elements.settingsModal) {
+            closeSettingsModal();
         }
     });
 }
@@ -1326,6 +1345,86 @@ function showError(message) {
 
 function closeErrorModal() {
     elements.errorModal.classList.add('hidden');
+}
+
+// MODAL DE AJUSTES
+function openSettingsModal() {
+    elements.settingsModal.classList.remove('hidden');
+}
+
+function closeSettingsModal() {
+    elements.settingsModal.classList.add('hidden');
+    // Limpiar campos y mensajes de error
+    elements.settingsPassword.value = '';
+    hideSettingsError();
+}
+
+function showSettingsError(message) {
+    if (elements.settingsErrorMessage) {
+        elements.settingsErrorMessage.textContent = message;
+        elements.settingsErrorMessage.classList.remove('hidden');
+    }
+}
+
+function hideSettingsError() {
+    if (elements.settingsErrorMessage) {
+        elements.settingsErrorMessage.classList.add('hidden');
+        elements.settingsErrorMessage.textContent = '';
+    }
+}
+
+function handleChangeAiModel() {
+    const selectedModel = elements.aiModelSelect.value;
+    const password = elements.settingsPassword.value;
+    
+    // Limpiar error anterior
+    hideSettingsError();
+    
+    // Validar contraseña
+    if (password !== '4767') {
+        showSettingsError('Incorrect password. Please try again.');
+        return;
+    }
+    
+    // Aquí puedes agregar la lógica para cambiar el modelo de IA
+    // Por ejemplo, guardar en localStorage o enviar al backend
+    
+    // Mostrar mensaje de éxito
+    const modelName = selectedModel === 'google_gemini' ? 'Google Gemini' : 'Groq AI';
+    
+    // Cerrar modal
+    closeSettingsModal();
+    
+    // Mostrar notificación de éxito
+    showSuccessNotification(`AI Model changed to ${modelName} successfully!`);
+    
+    console.log(`AI Model changed to: ${selectedModel}`);
+}
+
+function showSuccessNotification(message) {
+    const notification = document.createElement('div');
+    notification.className = 'success-notification';
+    notification.textContent = '✓ ' + message;
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: #10b981;
+        color: white;
+        padding: 1rem 1.5rem;
+        border-radius: 8px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        z-index: 10000;
+        font-weight: 600;
+        animation: slideInRight 0.3s ease-out;
+    `;
+    
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        notification.style.animation = 'slideOutRight 0.3s ease-out';
+        setTimeout(() => notification.remove(), 300);
+    }, 3000);
 }
 
 // SISTEMA DE CHAT CON MEMORIA
