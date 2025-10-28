@@ -3,10 +3,7 @@
  * Maneja la interacción del usuario y comunicación con el backend
  */
 
-// ==========================================
 // CONFIGURACIÓN Y ESTADO GLOBAL
-// ==========================================
-
 const API_BASE_URL = window.location.origin;
 
 // Estado de la aplicación
@@ -15,13 +12,12 @@ const appState = {
     processedDocuments: {},  // Documentos ya procesados {documentId: {data}}
     activeDocumentId: null,  // ID del documento actualmente visible
     activeDocumentType: 'declaration',  // 'declaration' o 'cover'
-    activeStreams: {}  // EventSource activos por documentId {documentId: {declaration: EventSource, cover: EventSource}}
+    activeStreams: {},  // EventSource activos por documentId {documentId: {declaration: EventSource, cover: EventSource}}
+    cancelledDocuments: new Set(),  // IDs de documentos cancelados manualmente
+    isProcessing: false  // Flag para indicar si hay procesamiento activo
 };
 
-// ==========================================
 // ELEMENTOS DEL DOM
-// ==========================================
-
 const elements = {
     // Sección de subida
     uploadBox: document.getElementById('uploadBox'),
@@ -47,10 +43,7 @@ const elements = {
     closeErrorBtn: document.getElementById('closeErrorBtn')
 };
 
-// ==========================================
 // INICIALIZACIÓN
-// ==========================================
-
 document.addEventListener('DOMContentLoaded', () => {
     initializeEventListeners();
     console.log('DeclarationLetterOnline (Multi-Document) initialized');
@@ -84,10 +77,7 @@ function initializeEventListeners() {
     });
 }
 
-// ==========================================
 // MANEJO DE ARCHIVOS
-// ==========================================
-
 function handleDragOver(e) {
     e.preventDefault();
     elements.uploadBox.classList.add('dragover');
@@ -252,6 +242,10 @@ function removeFromQueue(itemId) {
         const documentId = queueItem.documentId;
         
         if (documentId) {
+            // Marcar como cancelado para detener cualquier procesamiento en curso
+            appState.cancelledDocuments.add(documentId);
+            console.log(`Marked document ${documentId} as cancelled`);
+            
             // Cancelar streams activos si existen
             if (appState.activeStreams[documentId]) {
                 // Cerrar Declaration Letter stream
@@ -302,10 +296,7 @@ function formatFileSize(bytes) {
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
 }
 
-// ==========================================
 // PROCESAMIENTO DE DOCUMENTOS
-// ==========================================
-
 async function handleProcessAll() {
     const pendingItems = appState.documentsQueue.filter(item => 
         item.status === 'pending' || item.status === 'uploaded'
@@ -315,20 +306,51 @@ async function handleProcessAll() {
         return;
     }
     
-        // Deshabilitar botón
+    // Deshabilitar botón
     elements.processAllBtn.disabled = true;
     elements.processAllBtn.textContent = 'Processing...';
+    appState.isProcessing = true;
     
     // Procesar cada archivo
     for (const item of pendingItems) {
+        // Verificar si el documento todavía existe en la cola (no fue eliminado)
+        const stillInQueue = appState.documentsQueue.find(q => q.id === item.id);
+        if (!stillInQueue) {
+            console.log(`Document ${item.id} was removed from queue, skipping...`);
+            continue;
+        }
+        
+        // Verificar si el documento fue cancelado
+        if (item.documentId && appState.cancelledDocuments.has(item.documentId)) {
+            console.log(`Document ${item.documentId} was cancelled, skipping...`);
+            continue;
+        }
+        
         if (item.status === 'pending') {
             // Subir archivo primero
-            await uploadFileFromQueue(item);
+            try {
+                await uploadFileFromQueue(item);
+            } catch (error) {
+                console.error(`Error uploading ${item.fileName}:`, error);
+                continue; // Saltar al siguiente documento
+            }
+        }
+        
+        // Verificar nuevamente después del upload
+        const stillInQueueAfterUpload = appState.documentsQueue.find(q => q.id === item.id);
+        if (!stillInQueueAfterUpload || (item.documentId && appState.cancelledDocuments.has(item.documentId))) {
+            console.log(`Document ${item.id} was removed/cancelled during upload, skipping processing...`);
+            continue;
         }
         
         if (item.documentId) {
-        // Procesar documento
-            await processDocumentFromQueue(item);
+            // Procesar documento
+            try {
+                await processDocumentFromQueue(item);
+            } catch (error) {
+                console.error(`Error processing ${item.fileName}:`, error);
+                // Continuar con el siguiente documento
+            }
         }
     }
     
@@ -340,16 +362,29 @@ async function handleProcessAll() {
         </svg>
         Process All Documents
     `;
+    appState.isProcessing = false;
 }
 
 async function uploadFileFromQueue(item) {
     try {
+        // Verificar si el item todavía existe en la cola
+        const stillInQueue = appState.documentsQueue.find(q => q.id === item.id);
+        if (!stillInQueue) {
+            throw new Error('Document removed from queue');
+        }
+        
         // Actualizar estado a uploading
         item.status = 'uploading';
         updateQueueUI();
         
         // Subir archivo
         const documentId = await uploadFile(item.file);
+        
+        // Verificar nuevamente después del upload
+        const stillInQueueAfterUpload = appState.documentsQueue.find(q => q.id === item.id);
+        if (!stillInQueueAfterUpload) {
+            throw new Error('Document removed from queue during upload');
+        }
         
         if (documentId) {
             item.documentId = documentId;
@@ -363,8 +398,12 @@ async function uploadFileFromQueue(item) {
         }
     } catch (error) {
         console.error('Error uploading file:', error);
-        item.status = 'error';
-        updateQueueUI();
+        // Solo actualizar estado si el item todavía está en la cola
+        const stillInQueue = appState.documentsQueue.find(q => q.id === item.id);
+        if (stillInQueue) {
+            item.status = 'error';
+            updateQueueUI();
+        }
         return false;
     }
 }
@@ -392,10 +431,7 @@ async function uploadFile(file) {
     }
 }
 
-// ==========================================
 // FUNCIONES AUXILIARES
-// ==========================================
-
 // Función para extraer el nombre del afectado del Declaration Letter
 function extractApplicantName(markdownContent) {
     // Buscar patrones comunes para extraer el nombre (solo 2-5 palabras)
@@ -488,12 +524,22 @@ function addDownloadButtonToHeader(documentId, documentType, label) {
     buttonsContainer.appendChild(downloadBtn);
 }
 
-// ==========================================
 // FUNCIONES DE PROCESAMIENTO
-// ==========================================
-
 async function processDocumentFromQueue(item) {
     try {
+        // Verificar si el documento fue cancelado
+        if (appState.cancelledDocuments.has(item.documentId)) {
+            console.log(`Document ${item.documentId} was cancelled, aborting processing`);
+            throw new Error('Document was cancelled');
+        }
+        
+        // Verificar si todavía está en la cola
+        const stillInQueue = appState.documentsQueue.find(q => q.id === item.id);
+        if (!stillInQueue) {
+            console.log(`Document ${item.id} was removed from queue, aborting processing`);
+            throw new Error('Document removed from queue');
+        }
+        
         // Actualizar estado
         item.status = 'processing';
         updateQueueUI();
@@ -505,15 +551,27 @@ async function processDocumentFromQueue(item) {
         // Procesar con streaming
         await processDocumentStream(item.documentId, item.fileName);
         
+        // Verificar nuevamente después del procesamiento
+        const stillInQueueAfterProcess = appState.documentsQueue.find(q => q.id === item.id);
+        if (!stillInQueueAfterProcess || appState.cancelledDocuments.has(item.documentId)) {
+            console.log(`Document ${item.id} was removed/cancelled after processing, not marking as completed`);
+            return;
+        }
+        
         // Actualizar estado
         item.status = 'completed';
         updateQueueUI();
         
     } catch (error) {
         console.error('Error processing document:', error);
-        item.status = 'error';
-        updateQueueUI();
-        showError(`Error processing ${item.fileName}: ${error.message}`);
+        
+        // Solo actualizar si el documento todavía está en la cola y no fue cancelado
+        const stillInQueue = appState.documentsQueue.find(q => q.id === item.id);
+        if (stillInQueue && !appState.cancelledDocuments.has(item.documentId)) {
+            item.status = 'error';
+            updateQueueUI();
+            showError(`Error processing ${item.fileName}: ${error.message}`);
+        }
     }
 }
 
@@ -541,9 +599,32 @@ async function processDocumentStream(documentId, fileName) {
         
         eventSource.onmessage = function(event) {
             try {
+                // Verificar si el documento fue cancelado
+                if (appState.cancelledDocuments.has(documentId)) {
+                    console.log(`Document ${documentId} was cancelled, closing stream`);
+                    eventSource.close();
+                    if (appState.activeStreams[documentId]) {
+                        delete appState.activeStreams[documentId].declaration;
+                    }
+                    hideLoadingSpinner(documentId);
+                    reject(new Error('Document was cancelled by user'));
+                    return;
+                }
+                
                 const data = JSON.parse(event.data);
                 
                 if (data.type === 'content' && data.chunk) {
+                    // Verificar cancelación antes de procesar chunk
+                    if (appState.cancelledDocuments.has(documentId)) {
+                        eventSource.close();
+                        if (appState.activeStreams[documentId]) {
+                            delete appState.activeStreams[documentId].declaration;
+                        }
+                        hideLoadingSpinner(documentId);
+                        reject(new Error('Document was cancelled by user'));
+                        return;
+                    }
+                    
                     // Si es el primer chunk, ocultar spinner
                     if (isFirstChunk) {
                         hideLoadingSpinner(documentId);
@@ -557,6 +638,16 @@ async function processDocumentStream(documentId, fileName) {
                     simulateTypingEffect(documentId, 'declaration', chunkBuffer);
                     
                 } else if (data.type === 'complete') {
+                    // Verificar una última vez antes de completar
+                    if (appState.cancelledDocuments.has(documentId)) {
+                        eventSource.close();
+                        if (appState.activeStreams[documentId]) {
+                            delete appState.activeStreams[documentId].declaration;
+                        }
+                        reject(new Error('Document was cancelled by user'));
+                        return;
+                    }
+                    
                     eventSource.close();
                     // Limpiar referencia al stream
                     if (appState.activeStreams[documentId]) {
@@ -579,7 +670,7 @@ async function processDocumentStream(documentId, fileName) {
                         generatedFilename: data.filename
                     };
                     
-                    // Habilitar botones de Declaration (Download y Regenerate)
+                    // Habilitar botones de Declaration (Download)
                     enableDeclarationButtons(documentId);
                     
                     // Generar Cover Letter automáticamente después de completar Declaration Letter
@@ -677,26 +768,17 @@ function hideLoadingSpinner(documentId) {
     }
 }
 
-// ==========================================
 // GESTIÓN DE ESTADO DE BOTONES
-// ==========================================
-
 function disableDocumentButtons(documentId) {
     const panel = document.querySelector(`.document-panel[data-document-id="${documentId}"]`);
     if (!panel) return;
     
     const downloadBtn = panel.querySelector('.download-declaration-btn');
-    const regenerateBtn = panel.querySelector('.regenerate-btn');
     
     if (downloadBtn) {
         downloadBtn.disabled = true;
         downloadBtn.style.opacity = '0.5';
         downloadBtn.style.cursor = 'not-allowed';
-    }
-    if (regenerateBtn) {
-        regenerateBtn.disabled = true;
-        regenerateBtn.style.opacity = '0.5';
-        regenerateBtn.style.cursor = 'not-allowed';
     }
 }
 
@@ -704,23 +786,13 @@ function enableDeclarationButtons(documentId) {
     const panel = document.querySelector(`.document-panel[data-document-id="${documentId}"]`);
     if (!panel) return;
     
-    const regenerateBtn = panel.querySelector('.regenerate-btn');
-    
     // Agregar botón de descarga al header superior derecho
     addDownloadButtonToHeader(documentId, 'declaration', 'Download Declaration');
     
-    // Habilitar botón de regenerar
-    if (regenerateBtn) {
-        regenerateBtn.disabled = false;
-        regenerateBtn.style.opacity = '1';
-        regenerateBtn.style.cursor = 'pointer';
-    }
+
 }
 
-// ==========================================
 // UI DE TABS Y PANELES
-// ==========================================
-
 function showPreviewSection() {
     elements.previewSection.classList.remove('hidden');
     elements.documentsTabs.classList.remove('hidden');
@@ -772,6 +844,19 @@ function switchToDocument(documentId) {
 function closeDocumentTab(documentId, event) {
     event.stopPropagation();
     
+    // Marcar como cancelado y cerrar streams si están activos
+    if (appState.activeStreams[documentId]) {
+        if (appState.activeStreams[documentId].declaration) {
+            appState.activeStreams[documentId].declaration.close();
+            delete appState.activeStreams[documentId].declaration;
+        }
+        if (appState.activeStreams[documentId].cover) {
+            appState.activeStreams[documentId].cover.close();
+            delete appState.activeStreams[documentId].cover;
+        }
+        delete appState.activeStreams[documentId];
+    }
+    
     // Eliminar tab
     const tab = document.querySelector(`.tab-button[data-document-id="${documentId}"]`);
     if (tab) tab.remove();
@@ -783,6 +868,9 @@ function closeDocumentTab(documentId, event) {
     // Eliminar de estado
     delete appState.processedDocuments[documentId];
     
+    // Limpiar del Set de cancelados (liberar memoria)
+    appState.cancelledDocuments.delete(documentId);
+    
     // Si era el activo, activar otro
     if (appState.activeDocumentId == documentId) {
         const remainingTabs = document.querySelectorAll('.tab-button');
@@ -791,7 +879,7 @@ function closeDocumentTab(documentId, event) {
             switchToDocument(firstTab.dataset.documentId);
         } else {
             // No quedan documentos, ocultar sección
-    elements.previewSection.classList.add('hidden');
+            elements.previewSection.classList.add('hidden');
             elements.documentsTabs.classList.add('hidden');
         }
     }
@@ -837,16 +925,7 @@ function initializeDocumentPanel(documentId, fileName) {
                 <!-- Cover Letter content -->
             </div>
         </div>
-        <div class="document-panel-footer">
-            <div class="action-buttons">
-                <button class="btn btn-secondary regenerate-btn" onclick="regenerateDocument(${documentId})" disabled>
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <path d="M17 10C17 13.866 13.866 17 10 17C6.134 17 3 13.866 3 10C3 6.134 6.134 3 10 3C11.848 3 13.536 3.752 14.778 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            </svg>
-                    Regenerate
-                </button>
-            </div>
-        </div>
+
     `;
     
     elements.documentsViewer.appendChild(panel);
@@ -906,6 +985,12 @@ function convertMarkdownToHTML(markdownContent) {
 
 // Función para generar Cover Letter automáticamente (sin intervención del usuario)
 async function generateCoverLetterAutomatically(documentId) {
+    // Verificar si el documento fue cancelado antes de iniciar
+    if (appState.cancelledDocuments.has(documentId)) {
+        console.log(`Document ${documentId} was cancelled, skipping Cover Letter generation`);
+        return;
+    }
+    
     const panel = document.querySelector(`.document-panel[data-document-id="${documentId}"]`);
     if (!panel) return;
     
@@ -920,11 +1005,20 @@ async function generateCoverLetterAutomatically(documentId) {
     coverContent.innerHTML = '<p style="color: #6b7280; font-style: italic;">Generating Cover Letter automatically...</p>';
     
     try {
+        // Verificar nuevamente antes de generar
+        if (appState.cancelledDocuments.has(documentId)) {
+            console.log(`Document ${documentId} was cancelled, aborting Cover Letter generation`);
+            return;
+        }
+        
         // Generar con streaming
         await generateCoverLetterStream(documentId);
         
     } catch (error) {
-        showError(`Error generating Cover Letter: ${error.message}`);
+        // Solo mostrar error si el documento no fue cancelado
+        if (!appState.cancelledDocuments.has(documentId)) {
+            showError(`Error generating Cover Letter: ${error.message}`);
+        }
     }
 }
 
@@ -965,10 +1059,7 @@ function switchDocumentType(documentId, type) {
 
 window.switchDocumentType = switchDocumentType;
 
-// ==========================================
 // ACCIONES DE DOCUMENTOS
-// ==========================================
-
 async function downloadDocument(documentId, type) {
     // Obtener el contenido actual del DOM (puede haber sido editado por el usuario)
     const panel = document.querySelector(`.document-panel[data-document-id="${documentId}"]`);
@@ -1029,126 +1120,6 @@ async function downloadDocument(documentId, type) {
 
 window.downloadDocument = downloadDocument;
 
-async function regenerateDocument(documentId) {
-    const panel = document.querySelector(`.document-panel[data-document-id="${documentId}"]`);
-    if (!panel) return;
-    
-    const declarationContent = panel.querySelector('.declaration-content');
-    const regenerateBtn = panel.querySelector('.btn-secondary');
-    
-    // Deshabilitar botón
-    if (regenerateBtn) {
-        regenerateBtn.disabled = true;
-        regenerateBtn.textContent = 'Regenerating...';
-    }
-    
-    // Mostrar mensaje de regeneración
-    declarationContent.innerHTML = '<p style="color: #6b7280; font-style: italic;">Regenerating document in real-time...</p>';
-    
-    try {
-        // Regenerar con streaming (sin crear nuevo panel)
-        await regenerateDocumentStream(documentId);
-        
-        // Restaurar botón
-        if (regenerateBtn) {
-            regenerateBtn.disabled = false;
-            regenerateBtn.innerHTML = `
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <path d="M17 10C17 13.866 13.866 17 10 17C6.134 17 3 13.866 3 10C3 6.134 6.134 3 10 3C11.848 3 13.536 3.752 14.778 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            </svg>
-                Regenerate
-        `;
-        }
-    } catch (error) {
-        showError(`Error regenerating document: ${error.message}`);
-        if (regenerateBtn) {
-            regenerateBtn.disabled = false;
-            regenerateBtn.innerHTML = `
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                    <path d="M17 10C17 13.866 13.866 17 10 17C6.134 17 3 13.866 3 10C3 6.134 6.134 3 10 3C11.848 3 13.536 3.752 14.778 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            </svg>
-                Regenerate
-            `;
-        }
-    }
-}
-
-async function regenerateDocumentStream(documentId) {
-    return new Promise((resolve, reject) => {
-        const eventSource = new EventSource(`${API_BASE_URL}/api/process/${documentId}/stream`);
-        let fullContent = '';
-        let chunkBuffer = '';
-        let isFirstChunk = true;
-        
-        // Mostrar spinner
-        showLoadingSpinner(documentId);
-        
-        // Bloquear botones mientras regenera
-        disableDocumentButtons(documentId);
-        
-        eventSource.onmessage = function(event) {
-            try {
-                const data = JSON.parse(event.data);
-                
-                if (data.type === 'content' && data.chunk) {
-                    // Si es el primer chunk, ocultar spinner
-                    if (isFirstChunk) {
-                        hideLoadingSpinner(documentId);
-                        isFirstChunk = false;
-                    }
-                    
-                    fullContent += data.chunk;
-                    chunkBuffer += data.chunk;
-                    
-                    // Efecto de escritura gradual
-                    simulateTypingEffect(documentId, 'declaration', chunkBuffer);
-                    
-                } else if (data.type === 'complete') {
-                    eventSource.close();
-                    
-                    // Asegurar que todo el contenido se muestre
-                    updateDocumentContent(documentId, 'declaration', fullContent);
-                    
-                    // Actualizar en estado
-                    if (appState.processedDocuments[documentId]) {
-                        appState.processedDocuments[documentId].declarationContent = fullContent;
-                        appState.processedDocuments[documentId].generatedFilename = data.filename;
-                    }
-                    
-                    // Habilitar botones cuando termine
-                    enableDeclarationButtons(documentId);
-                    
-                    resolve();
-                } else if (data.type === 'error' || data.error) {
-                    eventSource.close();
-                    hideLoadingSpinner(documentId);
-                    enableDeclarationButtons(documentId);
-                    reject(new Error(data.error || 'Processing error'));
-                }
-            } catch (parseError) {
-                eventSource.close();
-                hideLoadingSpinner(documentId);
-                enableDeclarationButtons(documentId);
-                reject(parseError);
-            }
-        };
-        
-        eventSource.onerror = function(error) {
-            eventSource.close();
-            hideLoadingSpinner(documentId);
-            enableDeclarationButtons(documentId);
-            if (!fullContent) {
-                reject(new Error('Connection lost'));
-        } else {
-                resolve();
-            }
-        };
-    });
-}
-
-window.regenerateDocument = regenerateDocument;
-
-
 async function generateCoverLetterStream(documentId) {
     return new Promise((resolve, reject) => {
         const eventSource = new EventSource(`${API_BASE_URL}/api/generate-cover-letter/${documentId}/stream`);
@@ -1176,9 +1147,30 @@ async function generateCoverLetterStream(documentId) {
         
         eventSource.onmessage = function(event) {
             try {
+                // Verificar si el documento fue cancelado
+                if (appState.cancelledDocuments.has(documentId)) {
+                    console.log(`Document ${documentId} was cancelled, closing Cover Letter stream`);
+                    eventSource.close();
+                    if (appState.activeStreams[documentId]) {
+                        delete appState.activeStreams[documentId].cover;
+                    }
+                    reject(new Error('Document was cancelled by user'));
+                    return;
+                }
+                
                 const data = JSON.parse(event.data);
                 
                 if (data.type === 'content' && data.chunk) {
+                    // Verificar cancelación antes de procesar chunk
+                    if (appState.cancelledDocuments.has(documentId)) {
+                        eventSource.close();
+                        if (appState.activeStreams[documentId]) {
+                            delete appState.activeStreams[documentId].cover;
+                        }
+                        reject(new Error('Document was cancelled by user'));
+                        return;
+                    }
+                    
                     // Si es el primer chunk, limpiar spinner
                     if (isFirstChunk) {
                         if (coverContent) coverContent.innerHTML = '';
@@ -1192,6 +1184,16 @@ async function generateCoverLetterStream(documentId) {
                     simulateTypingEffectCover(documentId, chunkBuffer);
                     
                 } else if (data.type === 'complete') {
+                    // Verificar una última vez antes de completar
+                    if (appState.cancelledDocuments.has(documentId)) {
+                        eventSource.close();
+                        if (appState.activeStreams[documentId]) {
+                            delete appState.activeStreams[documentId].cover;
+                        }
+                        reject(new Error('Document was cancelled by user'));
+                        return;
+                    }
+                    
                     eventSource.close();
                     // Limpiar referencia al stream
                     if (appState.activeStreams[documentId]) {
@@ -1267,7 +1269,6 @@ function simulateTypingEffectCover(documentId, content) {
     }, 30);
 }
 
-
 // Función auxiliar para extraer texto limpio del HTML y reconstruir markdown
 function extractTextFromHTML(html) {
     const tempDiv = document.createElement('div');
@@ -1317,10 +1318,7 @@ function extractTextFromHTML(html) {
     return markdown.trim();
 }
 
-// ==========================================
 // MANEJO DE ERRORES
-// ==========================================
-
 function showError(message) {
     elements.errorMessage.textContent = message;
     elements.errorModal.classList.remove('hidden');
@@ -1330,10 +1328,7 @@ function closeErrorModal() {
     elements.errorModal.classList.add('hidden');
 }
 
-// ==========================================
 // SISTEMA DE CHAT CON MEMORIA
-// ==========================================
-
 const chatElements = {
     fab: document.getElementById('chatFab'),
     modal: document.getElementById('chatModal'),
@@ -1684,7 +1679,7 @@ function applyModification(modifiedText) {
     // Si el texto modificado es menos del 30% del contenido actual, advertir
     if (modifiedTextLength < currentContentLength * 0.3 && currentContentLength > 500) {
         const confirmApply = confirm(
-            '⚠️ Warning: The modified text appears to be shorter than expected.\n\n' +
+            'Warning: The modified text appears to be shorter than expected.\n\n' +
             'This might indicate that only a fragment was provided instead of the complete document.\n\n' +
             'Do you want to apply these changes anyway?\n\n' +
             `Current document: ${currentContentLength} characters\n` +
