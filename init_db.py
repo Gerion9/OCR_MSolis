@@ -18,9 +18,7 @@ def main():
     """
     Función principal para inicializar la base de datos
     """
-    print("\n" + "="*60)
-    print("INICIALIZACIÓN DE BASE DE DATOS - DeclarationLetterOnline")
-    print("="*60 + "\n")
+    print("INICIALIZACIÓN DE BASE DE DATOS")
     
     # Cargar variables de entorno
     load_dotenv()
@@ -38,10 +36,6 @@ def main():
         print("\nTablas creadas:")
         print("  - documents: Almacena información de documentos subidos")
         print("  - processing_logs: Registra el historial de procesamiento")
-        
-        print("\n" + "="*60)
-        print("Listo! Puedes iniciar la aplicacion ahora.")
-        print("="*60 + "\n")
         
         return True
         
