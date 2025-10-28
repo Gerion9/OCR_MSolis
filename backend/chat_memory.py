@@ -253,36 +253,7 @@ Current {document_type.title()} Letter content:
 {document_content}
 ---
 """
-        
-#         # Construir prompt completo para 2.5 pro
-#         full_prompt = f"""{self.system_prompt}
 
-# {memory_context}
-
-# {document_context}
-
-# Current Time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-
-# User Question: {user_message}
-
-# Response Instructions:
-
-# For questions/advice: Answer normally without "MODIFIED_TEXT:"
-
-# For modification requests: You MUST follow this EXACT format:
-# 1. Brief explanation (1-2 sentences)
-# 2. New line with ONLY the text: MODIFIED_TEXT:
-# 3. THE COMPLETE DOCUMENT from beginning to end with changes integrated
-
-# CRITICAL RULES:
-# - Output the ENTIRE document after "MODIFIED_TEXT:" (not a summary, not a fragment, not just the changed part)
-# - If the document has 50 paragraphs, output all 50 paragraphs (with the requested changes)
-# - DO NOT truncate or shorten the document
-# - DO NOT say "rest remains the same" - actually output everything
-# - Include ALL sections: beginning, middle, and end
-# - You have {self.generation_config['max_output_tokens']} tokens available - use them for complete output"""
-        
-            # Construir prompt completo para flash lite
         full_prompt = f"""{self.system_prompt}
 
 {memory_context}
