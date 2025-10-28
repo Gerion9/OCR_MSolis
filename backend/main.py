@@ -5,6 +5,7 @@ Backend con FastAPI para automatizar la redacción de Declaration Letters
 
 import os
 import uuid
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -38,9 +39,20 @@ from backend.chat_memory import ChatMemorySystem
 from dotenv import load_dotenv
 load_dotenv()
 
+# ==================== CONFIGURACIÓN DE LOGGING ====================
+# Configurar logging global de la aplicación
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        #logging.StreamHandler(),  # Mostrar en consola
+        logging.FileHandler('app.log', encoding='utf-8')  # Guardar en archivo
+    ]
+)
+
+logger = logging.getLogger(__name__)
 
 # ==================== CONFIGURACIÓN ====================
-
 # Configuración de directorios
 BASE_DIR = Path(__file__).parent.parent
 UPLOAD_FOLDER = BASE_DIR / os.getenv("UPLOAD_FOLDER", "uploads")
@@ -55,20 +67,17 @@ MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
 # Configuración de la API de Gemini
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL")
 GEMINI_TIMEOUT = int(os.getenv("GEMINI_TIMEOUT", "300"))  # 5 minutos por defecto
 
 # Configuración de mem0 para chat
 MEM0_API_KEY = os.getenv("MEM0_API_KEY", "")
 
-
 # ==================== INICIALIZACIÓN ====================
-
 # Inicializar FastAPI
 app = FastAPI(
     title="DeclarationLetterOnline",
-    description="Sistema para automatizar la redacción de Declaration Letters",
-    version="1.0.0"
+    description="Automation System for Declaration Letters and Cover Letters",
 )
 
 # Configurar CORS
@@ -89,13 +98,10 @@ ai_processor: Optional[AIProcessor] = None
 
 if GEMINI_API_KEY and GEMINI_API_KEY != "tu_api_key_aqui":
     ai_processor = create_ai_processor(GEMINI_API_KEY, GEMINI_MODEL, GEMINI_TIMEOUT)
-    if ai_processor:
-        print("Procesador de IA inicializado correctamente")
-        print(f"Timeout configurado: {GEMINI_TIMEOUT} segundos")
-    else:
-        print("Error al inicializar procesador de IA")
+    if not ai_processor:
+        logger.error("Error al inicializar procesador de IA")
 else:
-    print("Advertencia: API key de Gemini no configurada")
+    logger.warning("API key de Gemini no configurada")
 
 # Inicializar sistema de chat con memoria
 chat_system: Optional[ChatMemorySystem] = None
@@ -107,20 +113,15 @@ if GEMINI_API_KEY and MEM0_API_KEY:
             google_api_key=GEMINI_API_KEY,
             model_name=GEMINI_MODEL
         )
-        print("Sistema de chat con memoria inicializado correctamente")
-        print(f"Modelo configurado: {GEMINI_MODEL}")
     except Exception as e:
-        print(f"Error al inicializar sistema de chat: {e}")
+        logger.error(f"Error al inicializar sistema de chat: {e}")
 else:
-    print("Advertencia: API keys no configuradas para el sistema de chat")
-
+    logger.warning("API keys no configuradas para el sistema de chat")
 
 # Montar archivos estáticos
 app.mount("/frontend", StaticFiles(directory=str(FRONTEND_FOLDER)), name="frontend")
 
-
 # ==================== DEPENDENCIAS ====================
-
 def get_db():
     """Obtiene una sesión de base de datos"""
     db = db_manager.get_session()
@@ -128,7 +129,6 @@ def get_db():
         yield db
     finally:
         db.close()
-
 
 def get_ai_processor():
     """Obtiene el procesador de IA"""
@@ -139,14 +139,11 @@ def get_ai_processor():
         )
     return ai_processor
 
-
 # ==================== RUTAS ====================
-
 @app.get("/")
 async def root():
     """Redirige a la página principal"""
     return FileResponse(str(FRONTEND_FOLDER / "index.html"))
-
 
 @app.get("/health", response_model=HealthCheckResponse)
 async def health_check(db: Session = Depends(get_db)):
@@ -162,7 +159,6 @@ async def health_check(db: Session = Depends(get_db)):
         database=db_status,
         ai_service=ai_status
     )
-
 
 @app.post("/api/upload", response_model=DocumentUploadResponse)
 async def upload_document(
@@ -227,7 +223,6 @@ async def upload_document(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al subir archivo: {str(e)}")
-
 
 @app.post("/api/process/{document_id}", response_model=DocumentProcessResponse)
 async def process_document(
@@ -354,28 +349,6 @@ async def process_document(
             detail=f"Error al procesar documento. Por favor, intente nuevamente."
         )
 
-
-@app.post("/api/regenerate", response_model=DocumentProcessResponse)
-async def regenerate_document(
-    request: RegenerateRequest,
-    db: Session = Depends(get_db),
-    ai: AIProcessor = Depends(get_ai_processor)
-):
-    """
-    Regenera una declaration letter existente
-    
-    Args:
-        request: Solicitud con el ID del documento
-        db: Sesión de base de datos
-        ai: Procesador de IA
-    
-    Returns:
-        DocumentProcessResponse con el nuevo documento generado
-    """
-    # Simplemente llama a process_document nuevamente
-    return await process_document(request.document_id, db, ai)
-
-
 @app.get("/api/process/{document_id}/stream")
 async def process_document_stream(
     document_id: int,
@@ -496,7 +469,6 @@ async def process_document_stream(
         }
     )
 
-
 @app.get("/api/generate-cover-letter/{document_id}/stream")
 async def generate_cover_letter_stream(
     document_id: int,
@@ -597,7 +569,6 @@ async def generate_cover_letter_stream(
         }
     )
 
-
 @app.get("/api/status/{document_id}", response_model=DocumentStatusResponse)
 async def get_document_status(
     document_id: int,
@@ -627,7 +598,6 @@ async def get_document_status(
         processed_date=document.processed_date.isoformat() if document.processed_date else None,
         error_message=document.error_message
     )
-
 
 @app.get("/api/download/{document_id}")
 async def download_document(
@@ -670,7 +640,6 @@ async def download_document(
         }
     )
 
-
 @app.get("/api/preview/{document_id}")
 async def preview_document(
     document_id: int,
@@ -701,7 +670,6 @@ async def preview_document(
         "markdown_content": document.markdown_content,
         "generated_filename": document.generated_filename
     })
-
 
 @app.post("/api/generate-cover-letter/{document_id}", response_model=CoverLetterGenerateResponse)
 async def generate_cover_letter(
@@ -812,7 +780,6 @@ async def generate_cover_letter(
             detail=f"Error al generar Cover Letter. Por favor, intente nuevamente."
         )
 
-
 @app.get("/api/download-cover-letter/{document_id}")
 async def download_cover_letter(
     document_id: int,
@@ -853,7 +820,6 @@ async def download_cover_letter(
             "Content-Disposition": f"attachment; filename=cover_letter.docx"
         }
     )
-
 
 @app.post("/api/download-edited/{document_id}/{document_type}")
 async def download_edited_document(
@@ -900,7 +866,6 @@ async def download_edited_document(
         }
     )
 
-
 @app.get("/api/preview-cover-letter/{document_id}")
 async def preview_cover_letter(
     document_id: int,
@@ -932,9 +897,7 @@ async def preview_cover_letter(
         "cover_letter_filename": document.cover_letter_filename
     })
 
-
 # ==================== CHAT CON MEMORIA ====================
-
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat_with_ai(
     chat_message: ChatMessage,
@@ -1027,12 +990,11 @@ async def chat_with_ai(
     except HTTPException as he:
         raise he
     except Exception as e:
-        print(f"Error en chat: {e}")
+        logger.error(f"Error en chat: {e}")
         raise HTTPException(
             status_code=500, 
             detail=f"Error al procesar el mensaje: {str(e)}"
         )
-
 
 @app.post("/api/chat/stream")
 async def chat_with_ai_stream(
@@ -1129,7 +1091,7 @@ async def chat_with_ai_stream(
             
         except Exception as e:
             error_msg = f"Error inesperado: {str(e)}"
-            print(f"Error en chat stream: {e}")
+            logger.error(f"Error en chat stream: {e}")
             yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
     
     return StreamingResponse(
@@ -1141,7 +1103,6 @@ async def chat_with_ai_stream(
             "X-Accel-Buffering": "no"
         }
     )
-
 
 @app.delete("/api/chat/memory/{user_id}")
 async def clear_chat_memory(user_id: str):
@@ -1167,15 +1128,13 @@ async def clear_chat_memory(user_id: str):
             "message": f"Memoria limpiada para usuario {user_id}"
         })
     except Exception as e:
-        print(f"Error limpiando memoria: {e}")
+        logger.error(f"Error limpiando memoria: {e}")
         raise HTTPException(
             status_code=500,
             detail=f"Error al limpiar memoria: {str(e)}"
         )
 
-
 # ==================== INICIO DE LA APLICACIÓN ====================
-
 if __name__ == "__main__":
     import uvicorn
     
@@ -1183,12 +1142,9 @@ if __name__ == "__main__":
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", "8000"))
     
-    print("\n" + "="*60)
-    print("DeclarationLetterOnline - Sistema de Automatización")
-    print("="*60)
-    print(f"Servidor: http://{host}:{port}")
-    print(f"Documentación API: http://{host}:{port}/docs")
-    print("="*60 + "\n")
+    logger.info("Automation System for Declaration Letters and Cover Letters")
+    logger.info(f"Servidor: http://{host}:{port}")
+    logger.info(f"Documentación API: http://{host}:{port}/docs")
     
     uvicorn.run(
         "backend.main:app",
