@@ -14,8 +14,35 @@ const appState = {
     activeDocumentType: 'declaration',  // 'declaration' o 'cover'
     activeStreams: {},  // EventSource activos por documentId {documentId: {declaration: EventSource, cover: EventSource}}
     cancelledDocuments: new Set(),  // IDs de documentos cancelados manualmente
-    isProcessing: false  // Flag para indicar si hay procesamiento activo
+    isProcessing: false,  // Flag para indicar si hay procesamiento activo
+    selectedAIProvider: localStorage.getItem('selectedAIProvider') || 'google_gemini'  // Proveedor de IA seleccionado
 };
+
+// FUNCIONES DE CONFIGURACIÓN DE AI
+function getSelectedAIProvider() {
+    return appState.selectedAIProvider || 'google_gemini';
+}
+
+function setSelectedAIProvider(provider) {
+    appState.selectedAIProvider = provider;
+    localStorage.setItem('selectedAIProvider', provider);
+    console.log(`AI Provider cambiado a: ${provider}`);
+}
+
+function buildAPIUrl(endpoint, documentId, additionalParams = {}) {
+    const provider = getSelectedAIProvider();
+    const params = new URLSearchParams({
+        ai_provider: provider,
+        ...additionalParams
+    });
+    
+    let url = `${API_BASE_URL}${endpoint}`;
+    if (documentId) {
+        url = url.replace('{documentId}', documentId);
+    }
+    
+    return `${url}?${params.toString()}`;
+}
 
 // ELEMENTOS DEL DOM
 const elements = {
@@ -55,8 +82,18 @@ const elements = {
 // INICIALIZACIÓN
 document.addEventListener('DOMContentLoaded', () => {
     initializeEventListeners();
+    loadSavedSettings();
     console.log('DeclarationLetterOnline (Multi-Document) initialized');
 });
+
+function loadSavedSettings() {
+    // Cargar el proveedor de IA guardado
+    const savedProvider = getSelectedAIProvider();
+    if (elements.aiModelSelect) {
+        elements.aiModelSelect.value = savedProvider;
+    }
+    console.log(`Loaded saved AI Provider: ${savedProvider}`);
+}
 
 function initializeEventListeners() {
     // Botón de seleccionar archivo
@@ -596,7 +633,8 @@ async function processDocumentFromQueue(item) {
 
 async function processDocumentStream(documentId, fileName) {
     return new Promise((resolve, reject) => {
-        const eventSource = new EventSource(`${API_BASE_URL}/api/process/${documentId}/stream`);
+        const streamUrl = buildAPIUrl(`/api/process/${documentId}/stream`, null);
+        const eventSource = new EventSource(streamUrl);
         let fullContent = '';
         let chunkBuffer = '';
         let isFirstChunk = true;
@@ -1141,7 +1179,8 @@ window.downloadDocument = downloadDocument;
 
 async function generateCoverLetterStream(documentId) {
     return new Promise((resolve, reject) => {
-        const eventSource = new EventSource(`${API_BASE_URL}/api/generate-cover-letter/${documentId}/stream`);
+        const streamUrl = buildAPIUrl(`/api/generate-cover-letter/${documentId}/stream`, null);
+        const eventSource = new EventSource(streamUrl);
         let fullContent = '';
         let chunkBuffer = '';
         let isFirstChunk = true;
@@ -1373,7 +1412,7 @@ function hideSettingsError() {
     }
 }
 
-function handleChangeAiModel() {
+async function handleChangeAiModel() {
     const selectedModel = elements.aiModelSelect.value;
     const password = elements.settingsPassword.value;
     
@@ -1386,19 +1425,34 @@ function handleChangeAiModel() {
         return;
     }
     
-    // Aquí puedes agregar la lógica para cambiar el modelo de IA
-    // Por ejemplo, guardar en localStorage o enviar al backend
-    
-    // Mostrar mensaje de éxito
-    const modelName = selectedModel === 'google_gemini' ? 'Google Gemini' : 'Groq AI';
-    
-    // Cerrar modal
-    closeSettingsModal();
-    
-    // Mostrar notificación de éxito
-    showSuccessNotification(`AI Model changed to ${modelName} successfully!`);
-    
-    console.log(`AI Model changed to: ${selectedModel}`);
+    try {
+        // Verificar que el proveedor esté disponible
+        const response = await fetch(`${API_BASE_URL}/api/providers`);
+        const data = await response.json();
+        
+        if (!data.success || !data.providers.includes(selectedModel)) {
+            showSettingsError(`Provider '${selectedModel}' is not available. Please configure the API keys.`);
+            return;
+        }
+        
+        // Cambiar el proveedor usando la función del estado global
+        setSelectedAIProvider(selectedModel);
+        
+        // Mostrar mensaje de éxito
+        const modelName = selectedModel === 'google_gemini' ? 'Google Gemini' : 'Groq AI';
+        
+        // Cerrar modal
+        closeSettingsModal();
+        
+        // Mostrar notificación de éxito
+        showSuccessNotification(`AI Model changed to ${modelName} successfully!`);
+        
+        console.log(`AI Model changed to: ${selectedModel}`);
+        
+    } catch (error) {
+        console.error('Error changing AI provider:', error);
+        showSettingsError('Error verifying provider availability');
+    }
 }
 
 function showSuccessNotification(message) {
@@ -1498,11 +1552,18 @@ function addChatMessage(content, isUser = false, hasApplyButton = false, modifie
     const bubble = document.createElement('div');
     bubble.className = `chat-bubble ${isUser ? 'chat-bubble-user' : 'chat-bubble-assistant'}`;
     
-    // Formatear el contenido (convertir markdown básico a HTML)
-    let formattedContent = content
-        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\*(.+?)\*/g, '<em>$1</em>')
-        .replace(/\n/g, '<br>');
+    // Formatear el contenido
+    let formattedContent;
+    if (isUser) {
+        // Mensajes del usuario: formateo simple
+        formattedContent = content
+            .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*(.+?)\*/g, '<em>$1</em>')
+            .replace(/\n/g, '<br>');
+    } else {
+        // Mensajes del asistente: usar el mismo renderizado que document-preview
+        formattedContent = convertMarkdownToHTML(content);
+    }
     
     bubble.innerHTML = formattedContent;
     
@@ -1697,11 +1758,8 @@ function updateChatMessagePlaceholder(placeholder, content) {
     const bubble = placeholder.querySelector('.chat-bubble');
     if (!bubble) return;
     
-    // Formatear el contenido (convertir markdown básico a HTML)
-    let formattedContent = content
-        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\*(.+?)\*/g, '<em>$1</em>')
-        .replace(/\n/g, '<br>');
+    // Formatear el contenido usando el mismo renderizado que document-preview
+    let formattedContent = convertMarkdownToHTML(content);
     
     // Agregar cursor parpadeante al final
     bubble.innerHTML = formattedContent + '<span class="chat-cursor">▊</span>';
@@ -1718,11 +1776,8 @@ function finalizeChatMessage(placeholder, content, hasModification, modifiedText
     // Remover el atributo de placeholder
     placeholder.removeAttribute('data-placeholder');
     
-    // Formatear el contenido sin cursor
-    let formattedContent = content
-        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\*(.+?)\*/g, '<em>$1</em>')
-        .replace(/\n/g, '<br>');
+    // Formatear el contenido usando el mismo renderizado que document-preview
+    let formattedContent = convertMarkdownToHTML(content);
     
     bubble.innerHTML = formattedContent;
     
