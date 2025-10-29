@@ -1,6 +1,6 @@
 """
 Procesador de IA para generar Declaration Letters
-Integración con Google Gemini API
+Integración con múltiples proveedores: Google Gemini, Groq, etc.
 """
 
 import os
@@ -14,8 +14,19 @@ from pathlib import Path
 # Configurar logging
 logger = logging.getLogger(__name__)
 
+GROQ_MAX_TOKENS_DECLARATION = 16000
+GROQ_MAX_TOKENS_COVER = 8000
+
+# Importar Groq
+try:
+    from groq import Groq
+    GROQ_AVAILABLE = True
+except ImportError:
+    GROQ_AVAILABLE = False
+    logger.warning("Groq SDK no disponible. Instale con: pip install groq")
+
 # CONSTANTES DE CONFIGURACIÓN 
-# Configuración base de generación
+# Configuración base de generación para Gemini
 DEFAULT_GENERATION_CONFIG = {
     "temperature": 0.7,
     "top_p": 0.95,
@@ -23,7 +34,7 @@ DEFAULT_GENERATION_CONFIG = {
     "max_output_tokens": 8000,
 }
 
-# Configuración optimizada para Cover Letter (documentos más largos)
+# Configuración optimizada para Cover Letter (documentos más largos) - Gemini
 COVER_LETTER_GENERATION_CONFIG = {
     "temperature": 0.7,
     "top_p": 0.95,
@@ -31,6 +42,7 @@ COVER_LETTER_GENERATION_CONFIG = {
     "max_output_tokens": 12000,
     "candidate_count": 1,
 }
+
 
 # Configuración de seguridad (necesario para documentos de tráfico humano)
 SAFETY_SETTINGS = [
@@ -52,20 +64,13 @@ SAFETY_SETTINGS = [
     },
 ]
 
-class AIProcessor:
+class BaseAIProcessor:
     """
-    Procesador de IA para generar declaration letters usando Gemini
+    Clase base para procesadores de IA
+    Define la interfaz común para todos los proveedores
     """
     
     def __init__(self, api_key: str, model_name: str, request_timeout: int = 300):
-        """
-        Inicializa el procesador de IA
-        
-        Args:
-            api_key: API key de Google Gemini
-            model_name: Nombre del modelo a usar
-            request_timeout: Timeout en segundos para las solicitudes (default: 300s = 5 minutos)
-        """
         self.api_key = api_key
         self.model_name = model_name
         self.request_timeout = request_timeout
@@ -73,6 +78,38 @@ class AIProcessor:
         self.declaration_guide = ""
         self.cover_letter_system_prompt = ""
         self.cover_letter_structure = ""
+    
+    def generate_declaration_letter(self, questionnaire_text: str) -> Optional[str]:
+        raise NotImplementedError
+    
+    def generate_declaration_letter_stream(self, questionnaire_text: str) -> Generator[str, None, None]:
+        raise NotImplementedError
+    
+    def generate_cover_letter(self, declaration_letter_content: str) -> Optional[str]:
+        raise NotImplementedError
+    
+    def generate_cover_letter_stream(self, declaration_letter_content: str) -> Generator[str, None, None]:
+        raise NotImplementedError
+    
+    def extract_text_from_file(self, file_path: str) -> Optional[str]:
+        raise NotImplementedError
+
+
+class GeminiAIProcessor(BaseAIProcessor):
+    """
+    Procesador de IA para generar declaration letters usando Google Gemini
+    """
+    
+    def __init__(self, api_key: str, model_name: str, request_timeout: int = 300):
+        """
+        Inicializa el procesador de IA con Gemini
+        
+        Args:
+            api_key: API key de Google Gemini
+            model_name: Nombre del modelo a usar
+            request_timeout: Timeout en segundos para las solicitudes (default: 300s = 5 minutos)
+        """
+        super().__init__(api_key, model_name, request_timeout)
         
         # Configurar Gemini
         genai.configure(api_key=api_key)
@@ -415,10 +452,270 @@ DECLARATION LETTER DEL SOBREVIVIENTE:
             logger.error(f"Error al validar API key: {e}")
             return False
 
-# FUNCIONES DE UTILIDAD
-def create_ai_processor(api_key: str, model_name: str, request_timeout: int = 300) -> Optional[AIProcessor]:
+# Mantener compatibilidad con código antiguo
+AIProcessor = GeminiAIProcessor
+
+
+# ==================== GROQ AI PROCESSOR ====================
+class GroqAIProcessor(BaseAIProcessor):
     """
-    Crea y configura un procesador de IA
+    Procesador de IA para generar declaration letters usando Groq
+    """
+    
+    def __init__(self, api_key: str, model_name: str, request_timeout: int = 300):
+        """
+        Inicializa el procesador de IA con Groq
+        
+        Args:
+            api_key: API key de Groq
+            model_name: Nombre del modelo a usar (ej: llama-3.3-70b-versatile)
+            request_timeout: Timeout en segundos para las solicitudes
+        """
+        super().__init__(api_key, model_name, request_timeout)
+        
+        if not GROQ_AVAILABLE:
+            raise ImportError("Groq SDK no está instalado. Instale con: pip install groq")
+        
+        # Inicializar cliente de Groq
+        self.client = Groq(api_key=api_key)
+        
+        logger.debug(f"Groq AI Processor inicializado con modelo: {model_name}")
+        logger.debug(f"Timeout configurado: {request_timeout} segundos")
+    
+    def load_xml_files(self, system_prompt_path: str, declaration_path: str) -> bool:
+        """Carga archivos XML de Declaration Letter"""
+        try:
+            with open(system_prompt_path, 'r', encoding='utf-8') as f:
+                self.system_prompt = f.read()
+            
+            with open(declaration_path, 'r', encoding='utf-8') as f:
+                self.declaration_guide = f.read()
+            
+            logger.debug("Archivos XML de Declaration Letter cargados correctamente")
+            return True
+        except Exception as e:
+            logger.error(f"Error al cargar archivos XML de Declaration Letter: {e}")
+            return False
+    
+    def load_cover_letter_xml_files(self, system_prompt_path: str, structure_path: str) -> bool:
+        """Carga archivos XML de Cover Letter"""
+        try:
+            with open(system_prompt_path, 'r', encoding='utf-8') as f:
+                self.cover_letter_system_prompt = f.read()
+            
+            with open(structure_path, 'r', encoding='utf-8') as f:
+                self.cover_letter_structure = f.read()
+            
+            logger.debug("Archivos XML de Cover Letter cargados correctamente")
+            return True
+        except Exception as e:
+            logger.error(f"Error al cargar archivos XML de Cover Letter: {e}")
+            return False
+    
+    def extract_text_from_file(self, file_path: str) -> Optional[str]:
+        """
+        Extrae texto de un archivo
+        
+        Args:
+            file_path: Ruta al archivo
+        
+        Returns:
+            str: Texto extraído o None si hay error
+        """
+        try:
+            file_extension = Path(file_path).suffix.lower()
+            
+            # Para archivos de texto plano
+            if file_extension in ['.txt', '.md']:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    return f.read()
+            
+            # Para archivos DOCX
+            elif file_extension == '.docx':
+                try:
+                    import docx
+                    doc = docx.Document(file_path)
+                    text = []
+                    for paragraph in doc.paragraphs:
+                        text.append(paragraph.text)
+                    return '\n'.join(text)
+                except ImportError:
+                    logger.warning("python-docx no disponible, usando lectura básica")
+                    return self._extract_text_from_docx_basic(file_path)
+            
+            # Para archivos PDF
+            elif file_extension == '.pdf':
+                try:
+                    import PyPDF2
+                    with open(file_path, 'rb') as f:
+                        pdf_reader = PyPDF2.PdfReader(f)
+                        text = []
+                        for page in pdf_reader.pages:
+                            text.append(page.extract_text())
+                        return '\n'.join(text)
+                except ImportError:
+                    logger.warning("PyPDF2 no disponible")
+                    return None
+            
+            else:
+                logger.error(f"Tipo de archivo no soportado: {file_extension}")
+                return None
+        
+        except Exception as e:
+            logger.error(f"Error al extraer texto: {e}")
+            return None
+    
+    def _extract_text_from_docx_basic(self, file_path: str) -> Optional[str]:
+        """
+        Extrae texto de un DOCX usando solo librerías estándar
+        """
+        try:
+            import zipfile
+            
+            with zipfile.ZipFile(file_path, 'r') as docx:
+                xml_content = docx.read('word/document.xml')
+                tree = ET.fromstring(xml_content)
+                
+                namespaces = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+                paragraphs = tree.findall('.//w:p', namespaces)
+                
+                text = []
+                for paragraph in paragraphs:
+                    texts = paragraph.findall('.//w:t', namespaces)
+                    paragraph_text = ''.join([t.text for t in texts if t.text])
+                    if paragraph_text:
+                        text.append(paragraph_text)
+                
+                return '\n'.join(text)
+        
+        except Exception as e:
+            logger.error(f"Error en extracción básica de DOCX: {e}")
+            return None
+    
+    def _generate_content(self, prompt: str, use_stream: bool = False, max_tokens: int = None):
+        """
+        Método interno para generar contenido con Groq
+        
+        Args:
+            prompt: Prompt completo
+            use_stream: Si usar streaming o no
+            max_tokens: Máximo de tokens a generar (usa GROQ_MAX_TOKENS_DECLARATION por defecto)
+        
+        Returns/Yields:
+            str o Generator de strings
+        """
+        # Usar valor por defecto si no se especifica
+        if max_tokens is None:
+            max_tokens = GROQ_MAX_TOKENS_DECLARATION
+        try:
+            logger.debug(f"Generando contenido con Groq (modelo: {self.model_name})...")
+            start_time = time.time()
+            
+            if use_stream:
+                # Modo streaming
+                stream = self.client.chat.completions.create(
+                    model=self.model_name,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.7,
+                    max_tokens=max_tokens,
+                    stream=True,
+                    timeout=self.request_timeout
+                )
+                
+                for chunk in stream:
+                    if chunk.choices[0].delta.content:
+                        yield chunk.choices[0].delta.content
+                
+                elapsed_time = time.time() - start_time
+                logger.debug(f"Generación con streaming completada en {elapsed_time:.2f} segundos")
+            else:
+                # Modo normal
+                completion = self.client.chat.completions.create(
+                    model=self.model_name,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.7,
+                    max_tokens=max_tokens,
+                    timeout=self.request_timeout
+                )
+                
+                elapsed_time = time.time() - start_time
+                logger.debug(f"Generación completada en {elapsed_time:.2f} segundos")
+                
+                return completion.choices[0].message.content
+        
+        except Exception as e:
+            error_msg = str(e)
+            if "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
+                logger.error(f"La generación excedió el tiempo límite de {self.request_timeout}s")
+            else:
+                logger.error(f"Error al generar contenido con Groq: {e}")
+            raise Exception(f"Error al generar contenido: {error_msg}")
+    
+    def _build_prompt(self, questionnaire_text: str) -> str:
+        """Construye el prompt para Declaration Letter"""
+        prompt = f"""
+{self.system_prompt}
+
+{self.declaration_guide}
+
+---
+
+CUESTIONARIO DEL AFECTADO:
+{questionnaire_text}
+
+---
+"""
+        return prompt
+    
+    def _build_cover_letter_prompt(self, declaration_letter_content: str) -> str:
+        """Construye el prompt para Cover Letter"""
+        prompt = f"""
+{self.cover_letter_system_prompt}
+
+{self.cover_letter_structure}
+
+---
+
+DECLARATION LETTER DEL SOBREVIVIENTE:
+{declaration_letter_content}
+
+---
+"""
+        return prompt
+    
+    def generate_declaration_letter(self, questionnaire_text: str) -> Optional[str]:
+        """Genera una declaration letter basada en el cuestionario"""
+        full_prompt = self._build_prompt(questionnaire_text)
+        return self._generate_content(full_prompt, use_stream=False, max_tokens=GROQ_MAX_TOKENS_DECLARATION)
+    
+    def generate_declaration_letter_stream(self, questionnaire_text: str) -> Generator[str, None, None]:
+        """Genera una declaration letter con streaming"""
+        full_prompt = self._build_prompt(questionnaire_text)
+        yield from self._generate_content(full_prompt, use_stream=True, max_tokens=GROQ_MAX_TOKENS_DECLARATION)
+    
+    def generate_cover_letter(self, declaration_letter_content: str) -> Optional[str]:
+        """Genera un Cover Letter basado en el Declaration Letter"""
+        if not self.cover_letter_system_prompt or not self.cover_letter_structure:
+            logger.error("Archivos XML de Cover Letter no cargados")
+            return None
+        
+        full_prompt = self._build_cover_letter_prompt(declaration_letter_content)
+        return self._generate_content(full_prompt, use_stream=False, max_tokens=GROQ_MAX_TOKENS_COVER)
+    
+    def generate_cover_letter_stream(self, declaration_letter_content: str) -> Generator[str, None, None]:
+        """Genera un Cover Letter con streaming"""
+        if not self.cover_letter_system_prompt or not self.cover_letter_structure:
+            logger.error("Archivos XML de Cover Letter no cargados")
+            raise Exception("Cover Letter XML files not loaded")
+        
+        full_prompt = self._build_cover_letter_prompt(declaration_letter_content)
+        yield from self._generate_content(full_prompt, use_stream=True, max_tokens=GROQ_MAX_TOKENS_COVER)
+
+
+# FUNCIONES DE UTILIDAD
+def create_ai_processor(api_key: str, model_name: str, request_timeout: int = 300) -> Optional[GeminiAIProcessor]:
+    """
+    Crea y configura un procesador de IA (Gemini por defecto, para compatibilidad)
     
     Args:
         api_key: API key de Google Gemini
@@ -426,10 +723,10 @@ def create_ai_processor(api_key: str, model_name: str, request_timeout: int = 30
         request_timeout: Timeout en segundos para las solicitudes (default: 300s = 5 minutos)
     
     Returns:
-        AIProcessor o None si hay error
+        GeminiAIProcessor o None si hay error
     """
     try:
-        processor = AIProcessor(api_key, model_name, request_timeout)
+        processor = GeminiAIProcessor(api_key, model_name, request_timeout)
         
         # Obtener rutas de archivos XML
         base_path = Path(__file__).parent.parent
