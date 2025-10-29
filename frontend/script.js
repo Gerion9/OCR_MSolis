@@ -1,5 +1,5 @@
 /**
- * DeclarationLetterOnline - Frontend JavaScript (Multi-Document Version)
+ * Automation System for Declaration and Cover Letters - Frontend JavaScript (Multi-Document Version)
  * Maneja la interacción del usuario y comunicación con el backend
  */
 
@@ -78,6 +78,13 @@ const elements = {
     changeAiModelBtn: document.getElementById('changeAiModelBtn'),
     settingsErrorMessage: document.getElementById('settingsErrorMessage')
 };
+
+elements.settingsPassword.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        handleChangeAiModel();
+    }
+});
 
 // INICIALIZACIÓN
 document.addEventListener('DOMContentLoaded', () => {
