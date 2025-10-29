@@ -8,7 +8,7 @@ import uuid
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict
 from io import BytesIO
 
 from fastapi import FastAPI, File, UploadFile, HTTPException, Depends
@@ -28,10 +28,13 @@ from backend.models import (
     HealthCheckResponse,
     CoverLetterGenerateResponse,
     ChatMessage,
-    ChatResponse
+    ChatResponse,
+    ProcessDocumentRequest,
+    AIProvidersResponse
 )
 from backend.database import DatabaseManager, DocumentRepository, LogRepository
-from backend.ai_processor import create_ai_processor, AIProcessor
+from backend.ai_processor import create_ai_processor, AIProcessor, BaseAIProcessor
+from backend.ai_provider_factory import AIProviderFactory
 from backend.document_converter import convert_md_text_to_docx_binary
 from backend.chat_memory import ChatMemorySystem
 
@@ -70,6 +73,14 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL")
 GEMINI_TIMEOUT = int(os.getenv("GEMINI_TIMEOUT", "300"))  # 5 minutos por defecto
 
+# Configuración de la API de Groq
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_TIMEOUT = int(os.getenv("GROQ_TIMEOUT", "300"))
+
+# Proveedor de IA por defecto
+DEFAULT_AI_PROVIDER = os.getenv("DEFAULT_AI_PROVIDER", "google_gemini")
+
 # Configuración de mem0 para chat
 MEM0_API_KEY = os.getenv("MEM0_API_KEY", "")
 
@@ -93,8 +104,8 @@ app.add_middleware(
 db_manager = DatabaseManager(os.getenv("DATABASE_URL", "sqlite:///./declaration_letters.db"))
 db_manager.create_tables()
 
-# Inicializar procesador de IA
-ai_processor: Optional[AIProcessor] = None
+# Inicializar procesador de IA por defecto (para compatibilidad)
+ai_processor: Optional[BaseAIProcessor] = None
 
 if GEMINI_API_KEY and GEMINI_API_KEY != "tu_api_key_aqui":
     ai_processor = create_ai_processor(GEMINI_API_KEY, GEMINI_MODEL, GEMINI_TIMEOUT)
@@ -102,6 +113,9 @@ if GEMINI_API_KEY and GEMINI_API_KEY != "tu_api_key_aqui":
         logger.error("Error al inicializar procesador de IA")
 else:
     logger.warning("API key de Gemini no configurada")
+
+# Caché de procesadores de IA por proveedor
+ai_processors_cache: Dict[str, BaseAIProcessor] = {}
 
 # Inicializar sistema de chat con memoria
 chat_system: Optional[ChatMemorySystem] = None
@@ -130,8 +144,52 @@ def get_db():
     finally:
         db.close()
 
+def get_ai_processor_by_provider(provider: str = None) -> BaseAIProcessor:
+    """
+    Obtiene el procesador de IA según el proveedor especificado
+    
+    Args:
+        provider: Nombre del proveedor (google_gemini, groq_ai). Si es None, usa el default
+    
+    Returns:
+        Instancia del procesador de IA
+    
+    Raises:
+        HTTPException: Si el proveedor no está disponible o configurado
+    """
+    # Usar proveedor por defecto si no se especifica
+    if not provider:
+        provider = DEFAULT_AI_PROVIDER
+    
+    # Verificar si ya existe en caché
+    if provider in ai_processors_cache:
+        return ai_processors_cache[provider]
+    
+    # Crear nuevo procesador
+    try:
+        processor = AIProviderFactory.create_processor(provider)
+        
+        if not processor:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Proveedor de IA '{provider}' no disponible. Verifique las API keys."
+            )
+        
+        # Agregar a caché
+        ai_processors_cache[provider] = processor
+        logger.info(f"Procesador de IA creado y cacheado: {provider}")
+        
+        return processor
+        
+    except Exception as e:
+        logger.error(f"Error al crear procesador de IA para {provider}: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Error al inicializar proveedor de IA '{provider}': {str(e)}"
+        )
+
 def get_ai_processor():
-    """Obtiene el procesador de IA"""
+    """Obtiene el procesador de IA por defecto (para compatibilidad con código antiguo)"""
     if not ai_processor:
         raise HTTPException(
             status_code=503,
@@ -159,6 +217,30 @@ async def health_check(db: Session = Depends(get_db)):
         database=db_status,
         ai_service=ai_status
     )
+
+@app.get("/api/providers", response_model=AIProvidersResponse)
+async def get_available_providers():
+    """
+    Obtiene la lista de proveedores de IA disponibles y configurados
+    
+    Returns:
+        Lista de proveedores disponibles con sus configuraciones
+    """
+    try:
+        available_providers = AIProviderFactory.get_available_providers()
+        
+        return AIProvidersResponse(
+            success=True,
+            providers=available_providers,
+            default_provider=DEFAULT_AI_PROVIDER
+        )
+    except Exception as e:
+        logger.error(f"Error al obtener proveedores: {e}")
+        return AIProvidersResponse(
+            success=False,
+            providers=[],
+            default_provider=DEFAULT_AI_PROVIDER
+        )
 
 @app.post("/api/upload", response_model=DocumentUploadResponse)
 async def upload_document(
@@ -352,20 +434,22 @@ async def process_document(
 @app.get("/api/process/{document_id}/stream")
 async def process_document_stream(
     document_id: int,
-    db: Session = Depends(get_db),
-    ai: AIProcessor = Depends(get_ai_processor)
+    ai_provider: Optional[str] = None,
+    db: Session = Depends(get_db)
 ):
     """
     Procesa un documento y genera la declaration letter con streaming (SSE)
     
     Args:
         document_id: ID del documento a procesar
+        ai_provider: Proveedor de IA a usar (google_gemini, groq_ai, etc.)
         db: Sesión de base de datos
-        ai: Procesador de IA
     
     Returns:
         StreamingResponse con Server-Sent Events
     """
+    # Obtener procesador de IA según el proveedor seleccionado
+    ai = get_ai_processor_by_provider(ai_provider)
     async def event_generator():
         doc_repo = DocumentRepository(db)
         log_repo = LogRepository(db)
@@ -472,20 +556,22 @@ async def process_document_stream(
 @app.get("/api/generate-cover-letter/{document_id}/stream")
 async def generate_cover_letter_stream(
     document_id: int,
-    db: Session = Depends(get_db),
-    ai: AIProcessor = Depends(get_ai_processor)
+    ai_provider: Optional[str] = None,
+    db: Session = Depends(get_db)
 ):
     """
     Genera un Cover Letter con streaming (SSE)
     
     Args:
         document_id: ID del documento con el Declaration Letter
+        ai_provider: Proveedor de IA a usar (google_gemini, groq_ai, etc.)
         db: Sesión de base de datos
-        ai: Procesador de IA
     
     Returns:
         StreamingResponse con Server-Sent Events
     """
+    # Obtener procesador de IA según el proveedor seleccionado
+    ai = get_ai_processor_by_provider(ai_provider)
     async def event_generator():
         doc_repo = DocumentRepository(db)
         log_repo = LogRepository(db)
