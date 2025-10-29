@@ -131,6 +131,7 @@ class ChatMessage(BaseModel):
     document_id: int
     document_type: str = "declaration"  # 'declaration' o 'cover'
     user_id: Optional[str] = None
+    ai_provider: Optional[str] = None  # Proveedor de IA seleccionado
 
 
 class ChatResponse(BaseModel):
@@ -142,3 +143,19 @@ class ChatResponse(BaseModel):
     response: Optional[str] = None
     has_modification: bool = False
     modified_text: Optional[str] = None
+
+
+class ProcessDocumentRequest(BaseModel):
+    """
+    Solicitud para procesar un documento con un proveedor de IA específico
+    """
+    ai_provider: Optional[str] = None  # 'google_gemini' o 'groq_ai'
+
+
+class AIProvidersResponse(BaseModel):
+    """
+    Respuesta con la lista de proveedores de IA disponibles
+    """
+    success: bool
+    providers: list
+    default_provider: str
