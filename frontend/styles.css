@@ -1388,6 +1388,51 @@ body {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
+/* Estilos para elementos markdown dentro del chat assistant */
+.chat-bubble-assistant h1 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin-top: 0.5rem;
+    margin-bottom: 0.75rem;
+    color: var(--text-primary);
+}
+
+.chat-bubble-assistant h1:first-child {
+    margin-top: 0;
+}
+
+.chat-bubble-assistant h2 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0.25rem;
+}
+
+.chat-bubble-assistant h2:first-child {
+    margin-top: 0;
+}
+
+.chat-bubble-assistant p {
+    margin-bottom: 0.75rem;
+    line-height: 1.6;
+}
+
+.chat-bubble-assistant p:last-child {
+    margin-bottom: 0;
+}
+
+.chat-bubble-assistant strong {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.chat-bubble-assistant em {
+    font-style: italic;
+}
+
 /* Botón de aplicar modificación */
 .chat-apply-btn {
     display: inline-flex;
