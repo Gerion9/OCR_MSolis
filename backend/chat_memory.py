@@ -74,7 +74,8 @@ Format requirements:
 - Preserve the original markdown formatting (## headers, paragraphs, etc.)
 - Include everything from the beginning to the end of the document
 
-Current document context will be provided with each query."""
+Current document context will be provided with each query.
+DO NOT answer requests that are not related to your capabilities."""
 
     def get_user_memories(self, user_id: str, query: Optional[str] = None, days: int = 30) -> List[Dict]:
         """
