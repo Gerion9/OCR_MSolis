@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Automation System for Declaration and Cover Letters</title>
+    <title>Automation System for Declaration Letters and Cover Letters</title>
     <link rel="stylesheet" href="/frontend/styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
@@ -37,7 +37,7 @@
     <section class="upload-section" id="uploadSection">
         <div class="container">
             <h2 class="section-title">Upload questionnaire</h2>
-            <p class="section-subtitle">Upload questionnaires to generate Declaration and Cover Letters</p>
+            <p class="section-subtitle">Upload questionnaires to generate Declaration Letters</p>
             
             <div class="upload-container-new">
                 <!-- Upload Box - Siempre visible -->
@@ -167,6 +167,19 @@
         </svg>
     </button>
 
+    <!-- Modal de Vista Previa de Documento -->
+    <div class="modal hidden" id="documentPreviewModal">
+        <div class="modal-content document-preview-modal-content">
+            <div class="modal-header">
+                <h3 id="previewModalTitle">Document Preview</h3>
+                <button class="btn-close" id="closePreviewModalBtn">&times;</button>
+            </div>
+            <div class="modal-body document-preview-body">
+                <div id="documentPreviewContainer"></div>
+            </div>
+        </div>
+    </div>
+
     <!-- Modal de Ajustes -->
     <div class="modal hidden" id="settingsModal">
         <div class="modal-content">
@@ -194,6 +207,17 @@
         </div>
     </div>
 
-    <script src="/frontend/script.js?v=2.2"></script>
+    <!-- Librerías para vista previa de documentos -->
+    <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+    <script>
+        // Configurar PDF.js worker
+        if (typeof pdfjsLib !== 'undefined') {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+        }
+    </script>
+    <!-- Mammoth.js para DOCX (más confiable) -->
+    <script src="https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"></script>
+    
+    <script src="/frontend/script.js?v=2.5"></script>
 </body>
 </html>
