@@ -1,5 +1,5 @@
 /**
- * Automation System for Declaration and Cover Letters - Frontend JavaScript (Multi-Document Version)
+ * DeclarationLetterOnline - Frontend JavaScript (Multi-Document Version)
  * Maneja la interacción del usuario y comunicación con el backend
  */
 
@@ -76,20 +76,33 @@ const elements = {
     aiModelSelect: document.getElementById('aiModelSelect'),
     settingsPassword: document.getElementById('settingsPassword'),
     changeAiModelBtn: document.getElementById('changeAiModelBtn'),
-    settingsErrorMessage: document.getElementById('settingsErrorMessage')
+    settingsErrorMessage: document.getElementById('settingsErrorMessage'),
+    
+    // Modal de vista previa de documento
+    documentPreviewModal: document.getElementById('documentPreviewModal'),
+    closePreviewModalBtn: document.getElementById('closePreviewModalBtn'),
+    previewModalTitle: document.getElementById('previewModalTitle'),
+    documentPreviewContainer: document.getElementById('documentPreviewContainer')
 };
-
-elements.settingsPassword.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-        e.preventDefault();
-        handleChangeAiModel();
-    }
-});
 
 // INICIALIZACIÓN
 document.addEventListener('DOMContentLoaded', () => {
     initializeEventListeners();
     loadSavedSettings();
+    
+    // Verificar que las librerías de preview estén cargadas
+    console.log('Checking preview libraries...');
+    console.log('PDF.js loaded:', typeof pdfjsLib !== 'undefined');
+    console.log('Mammoth.js loaded:', typeof mammoth !== 'undefined');
+    
+    if (typeof mammoth === 'undefined') {
+        console.warn('Mammoth.js library not loaded. DOCX preview will not be available.');
+    }
+    
+    if (typeof pdfjsLib === 'undefined') {
+        console.warn('PDF.js library not loaded. PDF preview will not be available.');
+    }
+    
     console.log('DeclarationLetterOnline (Multi-Document) initialized');
 });
 
@@ -136,6 +149,22 @@ function initializeEventListeners() {
     elements.settingsModal.addEventListener('click', (e) => {
         if (e.target === elements.settingsModal) {
             closeSettingsModal();
+        }
+    });
+    
+    // Permitir enviar con Enter en el campo de contraseña de ajustes
+    elements.settingsPassword.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            handleChangeAiModel();
+        }
+    });
+    
+    // Modal de vista previa de documento
+    elements.closePreviewModalBtn.addEventListener('click', closeDocumentPreviewModal);
+    elements.documentPreviewModal.addEventListener('click', (e) => {
+        if (e.target === elements.documentPreviewModal) {
+            closeDocumentPreviewModal();
         }
     });
 }
@@ -223,7 +252,10 @@ function addFilesToQueue(files) {
             fileSize: formatFileSize(file.size),
             status: 'pending',  // pending, uploading, uploaded, processing, completed, error
             documentId: null,  // Se asignará después del upload
-            uploadProgress: 0
+            uploadProgress: 0,
+            previewExpanded: false,  // Estado del acordeón de vista previa
+            previewRendered: false,  // Si ya se renderizó la vista previa
+            previewHTML: ''  // HTML de la vista previa renderizada
         };
         
         appState.documentsQueue.push(queueItem);
@@ -263,22 +295,43 @@ function createQueueItemElement(item) {
     
     const fileExtension = item.fileName.substring(item.fileName.lastIndexOf('.') + 1).toUpperCase();
     
+    // Mostrar botón de vista previa siempre que tengamos el archivo y no esté completado
+    const showPreviewButton = item.file && item.status !== 'completed' && item.status !== 'processing';
+    
     div.innerHTML = `
-        <div class="queue-item-info">
-            <div class="queue-item-icon">${fileExtension}</div>
-            <div class="queue-item-details">
-                <h4>${item.fileName}</h4>
-                <p>${item.fileSize}</p>
+        <div class="queue-item-header">
+            <div class="queue-item-info">
+                <div class="queue-item-icon">${fileExtension}</div>
+                <div class="queue-item-details">
+                    <h4>${item.fileName}</h4>
+                    <p>${item.fileSize}</p>
+                </div>
+            </div>
+            <div class="queue-item-actions">
+                ${showPreviewButton ? `
+                    <button class="btn-icon btn-toggle-preview" onclick="toggleDocumentPreview('${item.id}')" title="${item.previewExpanded ? 'Hide Preview' : 'Show Preview'}" type="button">
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" class="chevron-icon ${item.previewExpanded ? 'expanded' : ''}">
+                            <path d="M5 7.5L10 12.5L15 7.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                ` : ''}
+                <div class="queue-item-status ${item.status}">
+                    ${getStatusText(item.status)}
+                </div>
+                ${item.status !== 'completed' ? `<button class="btn-icon" onclick="removeFromQueue('${item.id}')" title="Remove" type="button">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M15 5L5 15M5 5L15 15" stroke="currentColor" stroke-width="2"/>
+                    </svg>
+                </button>` : ''}
             </div>
         </div>
-        <div class="queue-item-status ${item.status}">
-            ${getStatusText(item.status)}
-        </div>
-        ${item.status !== 'completed' ? `<button class="btn-icon" onclick="removeFromQueue('${item.id}')" title="Remove">
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <path d="M15 5L5 15M5 5L15 15" stroke="currentColor" stroke-width="2"/>
-            </svg>
-        </button>` : ''}
+        ${item.previewExpanded ? `
+            <div class="queue-item-preview-container">
+                <div id="preview-content-${item.id}" class="queue-preview-content">
+                    ${item.previewRendered ? item.previewHTML : '<div class="preview-loading">Loading preview...</div>'}
+                </div>
+            </div>
+        ` : ''}
     `;
     
     return div;
@@ -350,6 +403,192 @@ function removeFromQueue(itemId) {
 
 // Hacer función global para poder llamarla desde HTML
 window.removeFromQueue = removeFromQueue;
+
+// Función para alternar el acordeón de vista previa
+async function toggleDocumentPreview(itemId) {
+    console.log('toggleDocumentPreview called with itemId:', itemId);
+    
+    const queueItem = appState.documentsQueue.find(item => item.id == itemId);
+    
+    if (!queueItem) {
+        showError('Document not found in queue');
+        return;
+    }
+    
+    if (!queueItem.file) {
+        showError('Document file not available. Please re-upload the file.');
+        return;
+    }
+    
+    // Alternar estado expandido
+    queueItem.previewExpanded = !queueItem.previewExpanded;
+    
+    // Si se está expandiendo y no se ha renderizado aún, renderizar
+    if (queueItem.previewExpanded && !queueItem.previewRendered) {
+        // Actualizar UI primero para mostrar el loading
+        updateQueueUI();
+        
+        // Renderizar la vista previa
+        await renderPreviewInQueue(queueItem);
+    } else {
+        // Solo actualizar UI
+        updateQueueUI();
+    }
+}
+
+// Renderizar vista previa dentro del queue item
+async function renderPreviewInQueue(queueItem) {
+    console.log('Rendering preview for:', queueItem.fileName);
+    
+    const fileExtension = queueItem.fileName.substring(queueItem.fileName.lastIndexOf('.')).toLowerCase();
+    
+    try {
+        let previewHTML = '';
+        
+        if (fileExtension === '.pdf') {
+            console.log('Rendering PDF preview...');
+            previewHTML = await renderPDFPreviewToHTML(queueItem.file);
+        } else if (fileExtension === '.docx' || fileExtension === '.doc') {
+            console.log('Rendering DOCX preview...');
+            previewHTML = await renderDOCXPreviewToHTML(queueItem.file);
+        } else if (fileExtension === '.txt') {
+            console.log('Rendering TXT preview...');
+            previewHTML = await renderTextPreviewToHTML(queueItem.file);
+        } else {
+            console.warn('Unsupported file format:', fileExtension);
+            previewHTML = '<div class="preview-error">Unsupported file format for preview. Supported formats: PDF, DOCX, TXT</div>';
+        }
+        
+        queueItem.previewHTML = previewHTML;
+        queueItem.previewRendered = true;
+        
+        // Actualizar UI para mostrar el preview renderizado
+        updateQueueUI();
+        
+    } catch (error) {
+        console.error('Error rendering preview:', error);
+        queueItem.previewHTML = `<div class="preview-error">Error loading preview: ${error.message}</div>`;
+        queueItem.previewRendered = true;
+        updateQueueUI();
+    }
+}
+
+// Hacer función global
+window.toggleDocumentPreview = toggleDocumentPreview;
+
+// Renderizar PDF y retornar HTML
+async function renderPDFPreviewToHTML(file) {
+    try {
+        if (typeof pdfjsLib === 'undefined') {
+            throw new Error('PDF.js library not loaded. Please refresh the page.');
+        }
+        
+        const arrayBuffer = await file.arrayBuffer();
+        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+        const pdf = await loadingTask.promise;
+        
+        const container = document.createElement('div');
+        container.className = 'pdf-preview-wrapper';
+        
+        // Renderizar primeras 2 páginas (para no sobrecargar)
+        const numPages = Math.min(pdf.numPages, 2);
+        
+        for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+            const page = await pdf.getPage(pageNum);
+            const viewport = page.getViewport({ scale: 1.2 });
+            
+            // Crear canvas temporal
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+            
+            // Renderizar página en canvas
+            await page.render({
+                canvasContext: context,
+                viewport: viewport
+            }).promise;
+            
+            // Convertir canvas a imagen base64
+            const imageDataUrl = canvas.toDataURL('image/png');
+            
+            // Crear elemento img con el base64
+            const img = document.createElement('img');
+            img.className = 'pdf-page-image';
+            img.src = imageDataUrl;
+            img.alt = `Page ${pageNum}`;
+            
+            container.appendChild(img);
+        }
+        
+        if (pdf.numPages > 2) {
+            const morePages = document.createElement('div');
+            morePages.className = 'more-pages-indicator';
+            morePages.textContent = `+ ${pdf.numPages - 2} more pages...`;
+            container.appendChild(morePages);
+        }
+        
+        return container.outerHTML;
+    } catch (error) {
+        throw new Error('Failed to render PDF: ' + error.message);
+    }
+}
+
+// Renderizar DOCX y retornar HTML
+async function renderDOCXPreviewToHTML(file) {
+    try {
+        if (typeof mammoth === 'undefined') {
+            throw new Error('DOCX preview library (Mammoth.js) not loaded. Please refresh the page.');
+        }
+        
+        const arrayBuffer = await file.arrayBuffer();
+        
+        console.log('Converting DOCX to HTML...');
+        
+        // Convertir DOCX a HTML usando mammoth.js
+        const result = await mammoth.convertToHtml({arrayBuffer: arrayBuffer});
+        
+        console.log('Mammoth conversion complete');
+        
+        // Crear contenedor para el DOCX
+        const docxContainer = document.createElement('div');
+        docxContainer.className = 'docx-preview-wrapper';
+        
+        const docxContent = document.createElement('div');
+        docxContent.className = 'docx-preview-content';
+        docxContent.innerHTML = result.value;
+        
+        docxContainer.appendChild(docxContent);
+        
+        // Mostrar advertencias si las hay
+        if (result.messages.length > 0) {
+            console.warn('Conversion warnings:', result.messages);
+        }
+        
+        return docxContainer.outerHTML;
+    } catch (error) {
+        console.error('DOCX render error:', error);
+        throw new Error('Failed to render DOCX: ' + error.message);
+    }
+}
+
+// Renderizar texto y retornar HTML
+async function renderTextPreviewToHTML(file) {
+    try {
+        const text = await file.text();
+        
+        // Limitar a primeros 5000 caracteres para no sobrecargar
+        const limitedText = text.length > 5000 ? text.substring(0, 5000) + '\n\n... (text truncated)' : text;
+        
+        const pre = document.createElement('pre');
+        pre.className = 'text-preview-content';
+        pre.textContent = limitedText;
+        
+        return pre.outerHTML;
+    } catch (error) {
+        throw new Error('Failed to render text file: ' + error.message);
+    }
+}
 
 function formatFileSize(bytes) {
     if (bytes === 0) return '0 Bytes';
