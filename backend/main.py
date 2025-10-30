@@ -1,6 +1,6 @@
 """
-DeclarationLetterOnline - Aplicación Web Principal
-Backend con FastAPI para automatizar la redacción de Declaration Letters
+Automation System for Declaration and Cover Letters - Main Backend
+Backend with FastAPI to automate the writing of Declaration Letters and Cover Letters
 """
 
 import os
@@ -22,11 +22,9 @@ import asyncio
 # Importaciones locales
 from backend.models import (
     DocumentUploadResponse, 
-    DocumentProcessResponse,
     DocumentStatusResponse,
     RegenerateRequest,
     HealthCheckResponse,
-    CoverLetterGenerateResponse,
     ChatMessage,
     ChatResponse,
     ProcessDocumentRequest,
@@ -305,131 +303,6 @@ async def upload_document(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al subir archivo: {str(e)}")
-
-@app.post("/api/process/{document_id}", response_model=DocumentProcessResponse)
-async def process_document(
-    document_id: int,
-    db: Session = Depends(get_db),
-    ai: AIProcessor = Depends(get_ai_processor)
-):
-    """
-    Procesa un documento y genera la declaration letter
-    
-    Args:
-        document_id: ID del documento a procesar
-        db: Sesión de base de datos
-        ai: Procesador de IA
-    
-    Returns:
-        DocumentProcessResponse con el documento generado
-    """
-    doc_repo = DocumentRepository(db)
-    log_repo = LogRepository(db)
-    
-    try:
-        # Obtener documento de la base de datos
-        document = doc_repo.get_document(document_id)
-        
-        if not document:
-            raise HTTPException(status_code=404, detail="Documento no encontrado")
-        
-        # Actualizar estado a procesando
-        doc_repo.update_document_status(document_id, "processing")
-        
-        # Crear log
-        log_repo.create_log(
-            document_id=document_id,
-            action="process_start",
-            details="Iniciando procesamiento del documento"
-        )
-        
-        # Extraer texto del archivo
-        file_path = UPLOAD_FOLDER / document.filename
-        
-        if not file_path.exists():
-            error_msg = "Archivo fuente no encontrado"
-            doc_repo.update_document_status(document_id, "error", error_msg)
-            log_repo.create_log(document_id, "error", error_msg)
-            raise HTTPException(status_code=404, detail=error_msg)
-        
-        questionnaire_text = ai.extract_text_from_file(str(file_path))
-        
-        if not questionnaire_text or len(questionnaire_text.strip()) == 0:
-            error_msg = "No se pudo extraer texto del archivo o el archivo está vacío"
-            doc_repo.update_document_status(document_id, "error", error_msg)
-            log_repo.create_log(document_id, "error", error_msg)
-            raise HTTPException(status_code=400, detail=error_msg)
-        
-        # Generar declaration letter
-        try:
-            markdown_content = ai.generate_declaration_letter(questionnaire_text)
-        except Exception as ai_error:
-            error_msg = f"Error en la API de IA: {str(ai_error)}"
-            doc_repo.update_document_status(document_id, "error", error_msg)
-            log_repo.create_log(document_id, "error", error_msg)
-            
-            # Verificar si es un error de timeout
-            if "timeout" in str(ai_error).lower() or "timed out" in str(ai_error).lower():
-                raise HTTPException(
-                    status_code=504, 
-                    detail=f"La generación del Declaration Letter excedió el tiempo límite de {GEMINI_TIMEOUT} segundos. El documento es muy extenso o el servidor está muy ocupado. Por favor, intente nuevamente en unos momentos."
-                )
-            else:
-                raise HTTPException(
-                    status_code=500, 
-                    detail=f"Error al comunicarse con el servicio de IA: {str(ai_error)}. Por favor, intente nuevamente."
-                )
-        
-        if not markdown_content or len(markdown_content.strip()) == 0:
-            error_msg = "La IA generó un documento vacío"
-            doc_repo.update_document_status(document_id, "error", error_msg)
-            log_repo.create_log(document_id, "error", error_msg)
-            raise HTTPException(
-                status_code=500, 
-                detail="Error al generar la declaration letter. El contenido generado está vacío."
-            )
-        
-        # Generar nombre de archivo (solo para referencia, no se guarda físicamente)
-        generated_filename = f"declaration_letter_{document_id}_{uuid.uuid4().hex[:8]}.docx"
-        
-        # Actualizar base de datos
-        doc_repo.update_document_content(
-            document_id,
-            markdown_content,
-            generated_filename
-        )
-        
-        # Crear log
-        log_repo.create_log(
-            document_id=document_id,
-            action="process_complete",
-            details=f"Documento generado: {generated_filename}"
-        )
-        
-        return DocumentProcessResponse(
-            success=True,
-            message="Declaration letter generada exitosamente",
-            document_id=document_id,
-            markdown_content=markdown_content,
-            generated_filename=generated_filename,
-            download_url=f"/api/download/{document_id}"
-        )
-    
-    except HTTPException:
-        raise
-    except Exception as e:
-        # Capturar cualquier otro error no manejado
-        error_msg = f"Error inesperado: {str(e)}"
-        try:
-            doc_repo.update_document_status(document_id, "error", error_msg)
-            log_repo.create_log(document_id, "error", error_msg)
-        except:
-            pass  # Si falla el log, al menos lanzar el error al cliente
-        
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Error al procesar documento. Por favor, intente nuevamente."
-        )
 
 @app.get("/api/process/{document_id}/stream")
 async def process_document_stream(
@@ -756,115 +629,6 @@ async def preview_document(
         "markdown_content": document.markdown_content,
         "generated_filename": document.generated_filename
     })
-
-@app.post("/api/generate-cover-letter/{document_id}", response_model=CoverLetterGenerateResponse)
-async def generate_cover_letter(
-    document_id: int,
-    db: Session = Depends(get_db),
-    ai: AIProcessor = Depends(get_ai_processor)
-):
-    """
-    Genera un Cover Letter basado en el Declaration Letter existente
-    
-    Args:
-        document_id: ID del documento con el Declaration Letter
-        db: Sesión de base de datos
-        ai: Procesador de IA
-    
-    Returns:
-        CoverLetterGenerateResponse con el Cover Letter generado
-    """
-    doc_repo = DocumentRepository(db)
-    log_repo = LogRepository(db)
-    
-    try:
-        # Obtener documento de la base de datos
-        document = doc_repo.get_document(document_id)
-        
-        if not document:
-            raise HTTPException(status_code=404, detail="Documento no encontrado")
-        
-        # Verificar que el Declaration Letter ya haya sido generado
-        if not document.markdown_content:
-            raise HTTPException(
-                status_code=400, 
-                detail="El Declaration Letter debe ser generado primero"
-            )
-        
-        # Crear log
-        log_repo.create_log(
-            document_id=document_id,
-            action="cover_letter_start",
-            details="Iniciando generación de Cover Letter"
-        )
-        
-        # Generar Cover Letter usando el Declaration Letter como base
-        try:
-            cover_letter_markdown = ai.generate_cover_letter(document.markdown_content)
-        except Exception as ai_error:
-            error_msg = f"Error en la API de IA: {str(ai_error)}"
-            log_repo.create_log(document_id, "cover_letter_error", error_msg)
-            
-            # Verificar si es un error de timeout
-            if "timeout" in str(ai_error).lower() or "timed out" in str(ai_error).lower():
-                raise HTTPException(
-                    status_code=504, 
-                    detail=f"La generación del Cover Letter excedió el tiempo límite de {GEMINI_TIMEOUT} segundos. El documento es muy extenso o el servidor está muy ocupado. Por favor, intente nuevamente en unos momentos."
-                )
-            else:
-                raise HTTPException(
-                    status_code=500, 
-                    detail=f"Error al comunicarse con el servicio de IA: {str(ai_error)}. Por favor, intente nuevamente."
-                )
-        
-        if not cover_letter_markdown or len(cover_letter_markdown.strip()) == 0:
-            error_msg = "La IA generó un Cover Letter vacío"
-            log_repo.create_log(document_id, "cover_letter_error", error_msg)
-            raise HTTPException(
-                status_code=500, 
-                detail="Error al generar el Cover Letter. El contenido generado está vacío."
-            )
-        
-        # Generar nombre de archivo (solo para referencia, no se guarda físicamente)
-        cover_letter_filename = f"cover_letter_{document_id}_{uuid.uuid4().hex[:8]}.docx"
-        
-        # Actualizar base de datos con el Cover Letter
-        doc_repo.update_cover_letter_content(
-            document_id,
-            cover_letter_markdown,
-            cover_letter_filename
-        )
-        
-        # Crear log
-        log_repo.create_log(
-            document_id=document_id,
-            action="cover_letter_complete",
-            details=f"Cover Letter generado: {cover_letter_filename}"
-        )
-        
-        return CoverLetterGenerateResponse(
-            success=True,
-            message="Cover Letter generado exitosamente",
-            document_id=document_id,
-            cover_letter_markdown=cover_letter_markdown,
-            cover_letter_filename=cover_letter_filename,
-            download_url=f"/api/download-cover-letter/{document_id}"
-        )
-    
-    except HTTPException:
-        raise
-    except Exception as e:
-        # Capturar cualquier otro error no manejado
-        error_msg = f"Error inesperado: {str(e)}"
-        try:
-            log_repo.create_log(document_id, "cover_letter_error", error_msg)
-        except:
-            pass
-        
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Error al generar Cover Letter. Por favor, intente nuevamente."
-        )
 
 @app.get("/api/download-cover-letter/{document_id}")
 async def download_cover_letter(
