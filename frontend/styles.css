@@ -1646,7 +1646,7 @@ body {
     gap: 0.5rem;
     margin-top: 0.75rem;
     padding: 0.5rem 1rem;
-    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    background: linear-gradient(135deg, #51869E 0%, #3C6375 100%);
     color: white;
     border: none;
     border-radius: var(--radius-md);
@@ -1658,7 +1658,7 @@ body {
 
 .chat-apply-btn:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+    box-shadow: 0 4px 12px #38505C;
 }
 
 /* Loading spinner en chat */
