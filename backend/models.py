@@ -70,18 +70,6 @@ class DocumentUploadResponse(BaseModel):
     filename: Optional[str] = None
 
 
-class DocumentProcessResponse(BaseModel):
-    """
-    Respuesta al procesar un documento
-    """
-    success: bool
-    message: str
-    document_id: int
-    markdown_content: Optional[str] = None
-    generated_filename: Optional[str] = None
-    download_url: Optional[str] = None
-
-
 class DocumentStatusResponse(BaseModel):
     """
     Respuesta de estado de un documento
@@ -94,13 +82,6 @@ class DocumentStatusResponse(BaseModel):
     error_message: Optional[str] = None
 
 
-class RegenerateRequest(BaseModel):
-    """
-    Solicitud para regenerar un documento
-    """
-    document_id: int
-
-
 class HealthCheckResponse(BaseModel):
     """
     Respuesta del health check
@@ -109,18 +90,6 @@ class HealthCheckResponse(BaseModel):
     timestamp: str
     database: str
     ai_service: str
-
-
-class CoverLetterGenerateResponse(BaseModel):
-    """
-    Respuesta al generar un Cover Letter
-    """
-    success: bool
-    message: str
-    document_id: int
-    cover_letter_markdown: Optional[str] = None
-    cover_letter_filename: Optional[str] = None
-    download_url: Optional[str] = None
 
 
 class ChatMessage(BaseModel):
@@ -142,3 +111,12 @@ class ChatResponse(BaseModel):
     response: Optional[str] = None
     has_modification: bool = False
     modified_text: Optional[str] = None
+
+
+class AIProvidersResponse(BaseModel):
+    """
+    Respuesta con la lista de proveedores de IA disponibles
+    """
+    success: bool
+    providers: list
+    default_provider: str

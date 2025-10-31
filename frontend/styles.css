@@ -1,7 +1,4 @@
-/* ==========================================
-   ESTILOS GLOBALES
-   ========================================== */
-
+/* ESTILOS GLOBALES*/
 * {
     margin: 0;
     padding: 0;
@@ -69,10 +66,7 @@ body {
     padding: 0 var(--spacing-md);
 }
 
-/* ==========================================
-   SECCIÓN 1: ENCABEZADO
-   ========================================== */
-
+/*SECCIÓN 1: ENCABEZADO*/
 .header {
     background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
     color: white;
@@ -86,6 +80,12 @@ body {
     padding: 0 var(--spacing-md);
 }
 
+.header-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
 .logo-section {
     display: flex;
     align-items: center;
@@ -94,6 +94,26 @@ body {
 
 .logo-placeholder {
     flex-shrink: 0;
+}
+
+.settings-icon {
+    background: rgba(255, 255, 255, 0.1);
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    border-radius: 50%;
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    color: white;
+}
+
+.settings-icon:hover {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.4);
+    transform: rotate(90deg);
 }
 
 .firm-info h1 {
@@ -110,10 +130,7 @@ body {
     max-width: 800px;
 }
 
-/* ==========================================
-   SECCIÓN 2: SUBIDA DEL ARCHIVO
-   ========================================== */
-
+/*SECCIÓN 2: SUBIDA DEL ARCHIVO*/
 .upload-section {
     padding: var(--spacing-xl) 0;
 }
@@ -239,13 +256,11 @@ body {
 }
 
 /* Archivo seleccionado */
-
 .file-selected {
     margin-top: var(--spacing-lg);
 }
 
 /* Cola de documentos */
-
 .documents-queue {
     background-color: var(--bg-primary);
     border: 1px solid var(--border-color);
@@ -293,9 +308,8 @@ body {
     border-radius: var(--radius-md);
     padding: var(--spacing-md);
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--spacing-md);
+    flex-direction: column;
+    gap: var(--spacing-sm);
     transition: all 0.2s ease;
 }
 
@@ -304,11 +318,103 @@ body {
     background-color: white;
 }
 
+.queue-item-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-md);
+    width: 100%;
+}
+
 .queue-item-info {
     flex: 1;
     display: flex;
     align-items: center;
     gap: var(--spacing-md);
+}
+
+.queue-item-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+/* Botón de toggle con chevron */
+.btn-toggle-preview {
+    color: var(--primary-color);
+    transition: all 0.3s ease;
+}
+
+.btn-toggle-preview:hover {
+    color: var(--primary-dark);
+    transform: scale(1.1);
+}
+
+.chevron-icon {
+    transition: transform 0.3s ease;
+}
+
+.chevron-icon.expanded {
+    transform: rotate(180deg);
+}
+
+/* Contenedor de vista previa expandible */
+.queue-item-preview-container {
+    width: 100%;
+    border-top: 1px solid var(--border-color);
+    padding-top: var(--spacing-md);
+    margin-top: var(--spacing-xs);
+    animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        max-height: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        max-height: 600px;
+        transform: translateY(0);
+    }
+}
+
+.queue-preview-content {
+    background-color: #f8f9fa;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-md);
+    max-height: 400px;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.queue-preview-content::-webkit-scrollbar {
+    width: 8px;
+}
+
+.queue-preview-content::-webkit-scrollbar-track {
+    background-color: #f1f1f1;
+    border-radius: 4px;
+}
+
+.queue-preview-content::-webkit-scrollbar-thumb {
+    background-color: var(--primary-light);
+    border-radius: 4px;
+}
+
+.queue-preview-content::-webkit-scrollbar-thumb:hover {
+    background-color: var(--primary-dark);
+}
+
+.preview-loading {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 2rem;
+    color: var(--text-secondary);
+    font-style: italic;
 }
 
 .queue-item-icon {
@@ -411,10 +517,7 @@ body {
     color: var(--text-secondary);
 }
 
-/* ==========================================
-   SECCIÓN 3: VISUALIZACIÓN
-   ========================================== */
-
+/*SECCIÓN 3: VISUALIZACIÓN*/
 .preview-section {
     padding: var(--spacing-xl) 0;
     background-color: var(--bg-tertiary);
@@ -524,10 +627,7 @@ body {
     justify-content: center;
 }
 
-/* ==========================================
-   TABS DE DOCUMENTOS
-   ========================================== */
-
+/*TABS DE DOCUMENTOS*/
 .documents-tabs {
     margin-bottom: var(--spacing-lg);
 }
@@ -753,10 +853,7 @@ body {
     text-align: justify;
 }
 
-/* ==========================================
-   SPINNER DE CARGA PARA STREAMING
-   ========================================== */
-
+/*SPINNER DE CARGA PARA STREAMING*/
 .streaming-loader {
     display: flex;
     flex-direction: column;
@@ -820,10 +917,7 @@ body {
     to { transform: rotate(360deg); }
 }
 
-/* ==========================================
-   BOTONES
-   ========================================== */
-
+/*BOTONES*/
 .btn {
     display: inline-flex;
     align-items: center;
@@ -923,17 +1017,30 @@ body {
     cursor: pointer;
     padding: var(--spacing-xs);
     color: var(--text-secondary);
-    transition: color 0.2s ease;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
 }
 
 .btn-icon:hover {
     color: var(--danger-color);
 }
 
-/* ==========================================
-   FOOTER
-   ========================================== */
+.btn-icon:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
 
+/* Vista previa - sobrescribe los estilos de btn-icon */
+.btn-icon.btn-preview {
+    color: var(--primary-color);
+}
+
+.btn-icon.btn-preview:hover {
+    color: var(--primary-dark);
+    transform: scale(1.1);
+}
+
+/*FOOTER*/
 .footer {
     background-color: var(--text-primary);
     color: white;
@@ -942,10 +1049,7 @@ body {
     margin-top: auto;
 }
 
-/* ==========================================
-   SISTEMA DE EDICIÓN Y DIFF
-   ========================================== */
-
+/*SISTEMA DE EDICIÓN Y DIFF*/
 /* Wrapper para controles y botones */
 .document-controls-wrapper {
     display: flex;
@@ -953,7 +1057,6 @@ body {
     gap: var(--spacing-xs);
     align-items: flex-end;
 }
-
 
 .document-download-section {
     display: flex;
@@ -982,10 +1085,7 @@ body {
     opacity: 0.8;
 }
 
-/* ==========================================
-   MODAL
-   ========================================== */
-
+/*MODAL*/
 .modal {
     position: fixed;
     top: 0;
@@ -1070,10 +1170,146 @@ body {
     gap: var(--spacing-sm);
 }
 
-/* ==========================================
-   UTILIDADES
-   ========================================== */
+/* Modal de vista previa de documento */
+.document-preview-modal-content {
+    max-width: 90vw;
+    max-height: 90vh;
+    width: auto;
+    overflow: hidden;
+}
 
+.document-preview-body {
+    max-height: 75vh;
+    overflow-y: auto;
+    overflow-x: auto;
+    padding: var(--spacing-md);
+    background-color: #f5f5f5;
+}
+
+.loading-preview {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 3rem;
+    font-size: 1.1rem;
+    color: var(--text-secondary);
+}
+
+.preview-error {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 3rem;
+    font-size: 1rem;
+    color: var(--danger-color);
+    background-color: #fee;
+    border-radius: var(--radius-md);
+}
+
+/* Vista previa de PDF en acordeón */
+.pdf-preview-wrapper {
+    background-color: white;
+    padding: 1rem;
+    border-radius: var(--radius-sm);
+}
+
+.pdf-page-image {
+    display: block;
+    margin: 0 auto 0.75rem auto;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+    border-radius: var(--radius-sm);
+    background-color: white;
+    max-width: 100%;
+    height: auto;
+    border: 1px solid var(--border-color);
+}
+
+/* Mantener estilo para canvas (por si se usa en modal) */
+.pdf-page-canvas {
+    display: block;
+    margin: 0 auto 0.75rem auto;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+    border-radius: var(--radius-sm);
+    background-color: white;
+    max-width: 100%;
+    height: auto;
+}
+
+.more-pages-indicator {
+    text-align: center;
+    padding: 0.75rem;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-style: italic;
+    background-color: #f8f9fa;
+    border-radius: var(--radius-sm);
+    margin-top: 0.5rem;
+}
+
+/* Vista previa de DOCX en acordeón */
+.docx-preview-wrapper {
+    background-color: white;
+    padding: 1.5rem;
+    border-radius: var(--radius-sm);
+}
+
+.docx-preview-content {
+    font-family: 'Century Schoolbook', 'Times New Roman', serif;
+    line-height: 1.6;
+    color: #000;
+    font-size: 0.9rem;
+}
+
+.docx-preview-content p {
+    margin-bottom: 0.75em;
+}
+
+.docx-preview-content h1 {
+    font-size: 1.5em;
+    margin: 1em 0 0.5em 0;
+}
+
+.docx-preview-content h2 {
+    font-size: 1.3em;
+    margin: 0.9em 0 0.4em 0;
+}
+
+.docx-preview-content h3 {
+    font-size: 1.1em;
+    margin: 0.8em 0 0.3em 0;
+}
+
+.docx-preview-content ul, .docx-preview-content ol {
+    margin: 0.5em 0;
+    padding-left: 2em;
+}
+
+.docx-preview-content table {
+    border-collapse: collapse;
+    margin: 1em 0;
+    width: 100%;
+}
+
+.docx-preview-content td, .docx-preview-content th {
+    border: 1px solid #ddd;
+    padding: 0.5em;
+}
+
+/* Vista previa de texto en acordeón */
+.text-preview-content {
+    background-color: white;
+    padding: 1.5rem;
+    border-radius: var(--radius-sm);
+    font-family: 'Courier New', monospace;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-x: auto;
+    color: #333;
+}
+
+/*UTILIDADES*/
 .hidden {
     display: none !important;
 }
@@ -1082,10 +1318,7 @@ body {
     text-align: center;
 }
 
-/* ==========================================
-   RESPONSIVE
-   ========================================== */
-
+/*RESPONSIVO*/
 @media (max-width: 768px) {
     .logo-section {
         flex-direction: column;
@@ -1134,10 +1367,7 @@ body {
     }
 }
 
-/* ==========================================
-   CHAT SYSTEM
-   ========================================== */
-
+/*CHAT SYSTEM*/
 /* Botón flotante de chat */
 .chat-fab {
     position: fixed;
@@ -1146,10 +1376,10 @@ body {
     width: 60px;
     height: 60px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+    background: linear-gradient(135deg, #51869E 0%, #3C6375 100%);
     color: white;
     border: none;
-    box-shadow: 0 8px 24px rgba(37, 99, 235, 0.4);
+    box-shadow: 0 8px 24px #1D2F38;
     cursor: pointer;
     transition: all 0.3s ease;
     z-index: 1000;
@@ -1160,7 +1390,7 @@ body {
 
 .chat-fab:hover {
     transform: translateY(-4px) scale(1.05);
-    box-shadow: 0 12px 32px rgba(37, 99, 235, 0.5);
+    box-shadow: 0 12px 32px #315261;
 }
 
 .chat-fab.hidden {
@@ -1364,6 +1594,51 @@ body {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
+/* Estilos para elementos markdown dentro del chat assistant */
+.chat-bubble-assistant h1 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin-top: 0.5rem;
+    margin-bottom: 0.75rem;
+    color: var(--text-primary);
+}
+
+.chat-bubble-assistant h1:first-child {
+    margin-top: 0;
+}
+
+.chat-bubble-assistant h2 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0.25rem;
+}
+
+.chat-bubble-assistant h2:first-child {
+    margin-top: 0;
+}
+
+.chat-bubble-assistant p {
+    margin-bottom: 0.75rem;
+    line-height: 1.6;
+}
+
+.chat-bubble-assistant p:last-child {
+    margin-bottom: 0;
+}
+
+.chat-bubble-assistant strong {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.chat-bubble-assistant em {
+    font-style: italic;
+}
+
 /* Botón de aplicar modificación */
 .chat-apply-btn {
     display: inline-flex;
@@ -1371,7 +1646,7 @@ body {
     gap: 0.5rem;
     margin-top: 0.75rem;
     padding: 0.5rem 1rem;
-    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    background: linear-gradient(135deg, #51869E 0%, #3C6375 100%);
     color: white;
     border: none;
     border-radius: var(--radius-md);
@@ -1383,7 +1658,7 @@ body {
 
 .chat-apply-btn:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+    box-shadow: 0 4px 12px #38505C;
 }
 
 /* Loading spinner en chat */
@@ -1457,7 +1732,7 @@ body {
     white-space: nowrap;
 }
 
-/* Responsive */
+/* Responsivo */
 @media (max-width: 768px) {
     .chat-fab {
         bottom: 1.5rem;
@@ -1524,5 +1799,82 @@ body {
     }
     51%, 100% {
         opacity: 0;
+    }
+}
+
+/*FORM CONTROLS*/
+.form-group {
+    margin-bottom: var(--spacing-md);
+}
+
+.form-group label {
+    display: block;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.form-select,
+.form-input {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    font-size: 0.95rem;
+    font-family: inherit;
+    border: 2px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    transition: all 0.2s ease;
+}
+
+.form-select:focus,
+.form-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(26, 43, 51, 0.1);
+}
+
+.form-select {
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M10.293 3.293L6 7.586 1.707 3.293A1 1 0 00.293 4.707l5 5a1 1 0 001.414 0l5-5a1 1 0 10-1.414-1.414z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 1rem center;
+    padding-right: 2.5rem;
+}
+
+.form-input::placeholder {
+    color: var(--text-light);
+}
+
+.error-message {
+    margin-top: 0.5rem;
+    padding: 0.75rem 1rem;
+    background-color: #fee2e2;
+    border-left: 4px solid #ef4444;
+    border-radius: var(--radius-sm);
+    color: #991b1b;
+    font-size: 0.875rem;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    animation: slideDown 0.3s ease-out;
+}
+
+.error-message::before {
+    content: "⚠";
+    font-size: 1.1rem;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
     }
 }

@@ -11,9 +11,7 @@ from datetime import datetime
 from typing import Optional, List
 import os
 
-
-# ==================== CONFIGURACIÓN DE LA BASE DE DATOS ====================
-
+# CONFIGURACIÓN DE LA BASE DE DATOS
 class DatabaseManager:
     """
     Gestor de la base de datos SQLite
@@ -47,7 +45,6 @@ class DatabaseManager:
         Crea todas las tablas en la base de datos
         """
         Base.metadata.create_all(bind=self.engine)
-        print("✓ Tablas de base de datos creadas exitosamente")
     
     def get_session(self) -> Session:
         """
@@ -65,8 +62,7 @@ class DatabaseManager:
         self.engine.dispose()
 
 
-# ==================== OPERACIONES CRUD ====================
-
+# OPERACIONES CRUD
 class DocumentRepository:
     """
     Repositorio para operaciones CRUD de documentos
@@ -231,7 +227,6 @@ class DocumentRepository:
             return True
         return False
 
-
 class LogRepository:
     """
     Repositorio para operaciones de logs
@@ -285,8 +280,7 @@ class LogRepository:
             ProcessingLog.document_id == document_id
         ).order_by(ProcessingLog.timestamp.desc()).all()
 
-
-# ==================== FUNCIONES DE UTILIDAD ====================
+# FUNCIONES DE UTILIDAD
 
 def init_database(database_url: str = "sqlite:///./declaration_letters.db"):
     """
@@ -301,5 +295,3 @@ def init_database(database_url: str = "sqlite:///./declaration_letters.db"):
     db_manager = DatabaseManager(database_url)
     db_manager.create_tables()
     return db_manager
-
-

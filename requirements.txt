@@ -1,6 +1,4 @@
-# ==========================================
 # DEPENDENCIAS DEL PROYECTO - DeclarationLetterOnline
-# ==========================================
 # Instalación: pip install -r requirements.txt
 
 # Framework web
@@ -15,6 +13,9 @@ aiosqlite==0.20.0
 # Google Gemini AI
 google-generativeai>=0.8.0
 httpx>=0.27.0
+
+# Groq AI
+groq==0.11.0
 
 # Chat con memoria
 mem0ai==0.1.28

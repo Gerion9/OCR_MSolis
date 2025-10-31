@@ -1,14 +1,12 @@
-"""
-DeclarationLetterOnline - Aplicación Web Principal
-Backend con FastAPI para automatizar la redacción de Declaration Letters
-"""
+""" Automation System for Declaration and Cover Letters - Main Backend
+Backend with FastAPI to automate the writing of Declaration Letters and Cover Letters """
 
 import os
 import uuid
+import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
-from io import BytesIO
+from typing import Optional, Dict
 
 from fastapi import FastAPI, File, UploadFile, HTTPException, Depends
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, Response
@@ -21,16 +19,14 @@ import asyncio
 # Importaciones locales
 from backend.models import (
     DocumentUploadResponse, 
-    DocumentProcessResponse,
     DocumentStatusResponse,
-    RegenerateRequest,
     HealthCheckResponse,
-    CoverLetterGenerateResponse,
     ChatMessage,
-    ChatResponse
+    AIProvidersResponse
 )
 from backend.database import DatabaseManager, DocumentRepository, LogRepository
-from backend.ai_processor import create_ai_processor, AIProcessor
+from backend.providers.base_provider import BaseAIProvider
+from backend.ai_provider_factory import AIProviderFactory
 from backend.document_converter import convert_md_text_to_docx_binary
 from backend.chat_memory import ChatMemorySystem
 
@@ -38,40 +34,43 @@ from backend.chat_memory import ChatMemorySystem
 from dotenv import load_dotenv
 load_dotenv()
 
+''' Configuración de logging '''
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('app.log', encoding='utf-8')  # Guardar en archivo
+    ]
+)
 
-# ==================== CONFIGURACIÓN ====================
+logger = logging.getLogger(__name__)
 
-# Configuración de directorios
+''' Configuración de las constantes de entorno '''
+# Directorios
 BASE_DIR = Path(__file__).parent.parent
 UPLOAD_FOLDER = BASE_DIR / os.getenv("UPLOAD_FOLDER", "uploads")
 FRONTEND_FOLDER = BASE_DIR / "frontend"
+UPLOAD_FOLDER.mkdir(exist_ok=True) # Crear directorios si no existen
 
-# Crear directorios si no existen
-UPLOAD_FOLDER.mkdir(exist_ok=True)
-
-# Configuración de la aplicación
 MAX_FILE_SIZE_MB = int(os.getenv("MAX_FILE_SIZE_MB", "10"))
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
-# Configuración de la API de Gemini
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-pro")
-GEMINI_TIMEOUT = int(os.getenv("GEMINI_TIMEOUT", "300"))  # 5 minutos por defecto
+''' Configuración de Proveedores de IA y Chat '''
+# Las configuraciones de Gemini/Groq (API keys, modelos, timeouts) se manejan en ai_provider_factory.py
+DEFAULT_AI_PROVIDER = os.getenv("DEFAULT_AI_PROVIDER", "google_gemini")
 
-# Configuración de mem0 para chat
+# API Keys para el sistema de chat (solo se usan aquí)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")  # Necesario para ChatMemorySystem
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")  # Necesario para ChatMemorySystem
 MEM0_API_KEY = os.getenv("MEM0_API_KEY", "")
 
-
-# ==================== INICIALIZACIÓN ====================
-
-# Inicializar FastAPI
+''' Inicialización de la aplicación web con FastAPI '''
 app = FastAPI(
-    title="DeclarationLetterOnline",
-    description="Sistema para automatizar la redacción de Declaration Letters",
-    version="1.0.0"
+    title="Online Declaration and Cover Letters",
+    description="Automation System for Declaration and Cover Letters",
 )
 
-# Configurar CORS
+''' Permite que el frontend (que puede estar en otro dominio) se comunique con el backend.'''
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -84,41 +83,175 @@ app.add_middleware(
 db_manager = DatabaseManager(os.getenv("DATABASE_URL", "sqlite:///./declaration_letters.db"))
 db_manager.create_tables()
 
-# Inicializar procesador de IA
-ai_processor: Optional[AIProcessor] = None
+ai_processors_cache: Dict[str, BaseAIProvider] = {} # Caché de procesadores de IA por proveedor
 
-if GEMINI_API_KEY and GEMINI_API_KEY != "tu_api_key_aqui":
-    ai_processor = create_ai_processor(GEMINI_API_KEY, GEMINI_MODEL, GEMINI_TIMEOUT)
-    if ai_processor:
-        print("Procesador de IA inicializado correctamente")
-        print(f"Timeout configurado: {GEMINI_TIMEOUT} segundos")
-    else:
-        print("Error al inicializar procesador de IA")
-else:
-    print("Advertencia: API key de Gemini no configurada")
+AVAILABLE_PROVIDERS = AIProviderFactory.get_available_providers() # Obtener proveedores disponibles al inicio (cachear)
+logger.info(f"Proveedores de IA disponibles: {AVAILABLE_PROVIDERS if AVAILABLE_PROVIDERS else 'Ninguno'}")
 
-# Inicializar sistema de chat con memoria
-chat_system: Optional[ChatMemorySystem] = None
+chat_system: Optional[ChatMemorySystem] = None # Inicializar sistema de chat con memoria
 
 if GEMINI_API_KEY and MEM0_API_KEY:
     try:
         chat_system = ChatMemorySystem(
             mem0_api_key=MEM0_API_KEY,
-            google_api_key=GEMINI_API_KEY
+            google_api_key=GEMINI_API_KEY,
+            model_name=GEMINI_MODEL
         )
-        print("Sistema de chat con memoria inicializado correctamente")
     except Exception as e:
-        print(f"Error al inicializar sistema de chat: {e}")
+        logger.error(f"Error al inicializar sistema de chat: {e}")
 else:
-    print("Advertencia: API keys no configuradas para el sistema de chat")
+    logger.warning("API keys no configuradas para el sistema de chat")
 
+app.mount("/frontend", StaticFiles(directory=str(FRONTEND_FOLDER)), name="frontend") # Montar archivos estáticos
 
-# Montar archivos estáticos
-app.mount("/frontend", StaticFiles(directory=str(FRONTEND_FOLDER)), name="frontend")
+# CONSTANTES
+STREAMING_HEADERS = {
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
+    "X-Accel-Buffering": "no"
+}
 
+DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
-# ==================== DEPENDENCIAS ====================
+# FUNCIONES HELPER
+def _get_document_or_404(doc_repo: DocumentRepository, document_id: int):
+    """
+    Obtiene un documento o lanza un error 404
+    
+    Args:
+        doc_repo: Repositorio de documentos
+        document_id: ID del documento
+    
+    Returns:
+        Document: El documento encontrado
+    
+    Raises:
+        HTTPException: Si el documento no existe
+    """
+    document = doc_repo.get_document(document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Documento no encontrado")
+    return document
 
+def _get_document_content(document, document_type: str) -> str:
+    """
+    Obtiene el contenido de un documento según su tipo
+    
+    Args:
+        document: El documento
+        document_type: Tipo de documento ('declaration' o 'cover')
+    
+    Returns:
+        str: Contenido del documento
+    
+    Raises:
+        HTTPException: Si el tipo es inválido o el contenido no existe
+    """
+    if document_type == "declaration":
+        content = document.markdown_content
+    elif document_type == "cover":
+        content = document.cover_letter_markdown
+    else:
+        raise HTTPException(status_code=400, detail="Tipo de documento inválido")
+    
+    if not content:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{document_type.title()} Letter no generado aún"
+        )
+    
+    return content
+
+def _extract_modified_text(response: str) -> tuple[bool, Optional[str]]:
+    """
+    Extrae el texto modificado de la respuesta del chat
+    
+    Args:
+        response: Respuesta completa del chat
+    
+    Returns:
+        tuple: (tiene_modificacion, texto_modificado)
+    """
+    has_modification = "MODIFIED_TEXT:" in response
+    modified_text = None
+    
+    if has_modification:
+        parts = response.split("MODIFIED_TEXT:", 1)
+        if len(parts) > 1:
+            modified_text = parts[1].strip()
+            
+            # Limpiar bloques de código markdown si los hay
+            if modified_text.startswith("```"):
+                lines = modified_text.split("\n")
+                if lines[0].strip().startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                modified_text = "\n".join(lines)
+            
+            modified_text = modified_text.strip()
+    
+    return has_modification, modified_text
+
+def _create_docx_response(markdown_content: str, filename: str) -> Response:
+    """ Crea una respuesta con un archivo DOCX generado desde contenido Markdown """
+    try:
+        docx_binary = convert_md_text_to_docx_binary(markdown_content)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al generar archivo DOCX: {str(e)}"
+        )
+    
+    return Response(
+        content=docx_binary,
+        media_type=DOCX_MEDIA_TYPE,
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}"
+        }
+    )
+
+def _create_preview_response(document, document_id: int, document_type: str) -> JSONResponse:
+    """
+    Crea una respuesta JSON con el preview de un documento
+    
+    Args:
+        document: El documento de la base de datos
+        document_id: ID del documento
+        document_type: Tipo de documento ('declaration' o 'cover')
+    
+    Returns:
+        JSONResponse con el contenido Markdown
+    
+    Raises:
+        HTTPException: Si el contenido no existe
+    """
+    if document_type == "declaration":
+        content = document.markdown_content
+        filename = document.generated_filename
+        content_key = "markdown_content"
+        filename_key = "generated_filename"
+        error_msg = "Documento no procesado aún"
+    elif document_type == "cover":
+        content = document.cover_letter_markdown
+        filename = document.cover_letter_filename
+        content_key = "cover_letter_markdown"
+        filename_key = "cover_letter_filename"
+        error_msg = "Cover Letter no generado aún"
+    else:
+        raise HTTPException(status_code=400, detail="Tipo de documento inválido")
+    
+    if not content:
+        raise HTTPException(status_code=400, detail=error_msg)
+    
+    return JSONResponse(content={
+        "success": True,
+        "document_id": document_id,
+        content_key: content,
+        filename_key: filename
+    })
+
+# DEPENDENCIAS
 def get_db():
     """Obtiene una sesión de base de datos"""
     db = db_manager.get_session()
@@ -127,32 +260,47 @@ def get_db():
     finally:
         db.close()
 
-
-def get_ai_processor():
-    """Obtiene el procesador de IA"""
-    if not ai_processor:
+def get_ai_processor(provider: str = None) -> BaseAIProvider:
+    if not provider:
+        provider = DEFAULT_AI_PROVIDER
+    
+    # Verificar si ya existe en caché
+    if provider in ai_processors_cache:
+        return ai_processors_cache[provider]
+    
+    # Crear nuevo procesador
+    try:
+        processor = AIProviderFactory.create_processor(provider)
+        
+        if not processor:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Proveedor de IA '{provider}' no disponible. Verifique las API keys."
+            )
+            
+        ai_processors_cache[provider] = processor # Agregar a caché
+        logger.info(f"Procesador de IA creado y cacheado: {provider}")
+        
+        return processor
+        
+    except Exception as e:
+        logger.error(f"Error al crear procesador de IA para {provider}: {e}")
         raise HTTPException(
             status_code=503,
-            detail="Servicio de IA no disponible. Configure la API key de Gemini."
+            detail=f"Error al inicializar proveedor de IA '{provider}': {str(e)}"
         )
-    return ai_processor
 
-
-# ==================== RUTAS ====================
-
+# RUTAS
 @app.get("/")
 async def root():
-    """Redirige a la página principal"""
+    """ Redirige a la página principal """
     return FileResponse(str(FRONTEND_FOLDER / "index.html"))
-
 
 @app.get("/health", response_model=HealthCheckResponse)
 async def health_check(db: Session = Depends(get_db)):
-    """
-    Verifica el estado de salud del sistema
-    """
+    """ Verifica el estado de salud del sistema """
     db_status = "ok"
-    ai_status = "ok" if ai_processor else "not_configured"
+    ai_status = "ok" if AVAILABLE_PROVIDERS else "not_configured" # Usar caché de proveedores 
     
     return HealthCheckResponse(
         status="healthy",
@@ -161,22 +309,30 @@ async def health_check(db: Session = Depends(get_db)):
         ai_service=ai_status
     )
 
+@app.get("/api/providers", response_model=AIProvidersResponse)
+async def get_available_providers():
+    """ Obtiene la lista de proveedores de IA disponibles y configurados """
+    try:
+        # Usar caché de proveedores 
+        return AIProvidersResponse(
+            success=True,
+            providers=AVAILABLE_PROVIDERS,
+            default_provider=DEFAULT_AI_PROVIDER
+        )
+    except Exception as e:
+        logger.error(f"Error al obtener proveedores: {e}")
+        return AIProvidersResponse(
+            success=False,
+            providers=[],
+            default_provider=DEFAULT_AI_PROVIDER
+        )
 
 @app.post("/api/upload", response_model=DocumentUploadResponse)
 async def upload_document(
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
-    """
-    Sube un archivo de cuestionario
-    
-    Args:
-        file: Archivo a subir
-        db: Sesión de base de datos
-    
-    Returns:
-        DocumentUploadResponse con información del documento subido
-    """
+    """ Sube un archivo de cuestionario """
     try:
         # Validar tamaño del archivo
         file_content = await file.read()
@@ -226,191 +382,73 @@ async def upload_document(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al subir archivo: {str(e)}")
 
-
-@app.post("/api/process/{document_id}", response_model=DocumentProcessResponse)
-async def process_document(
+async def _generate_document_stream(
     document_id: int,
-    db: Session = Depends(get_db),
-    ai: AIProcessor = Depends(get_ai_processor)
+    ai_processor: BaseAIProvider,
+    db: Session,
+    document_type: str
 ):
-    """
-    Procesa un documento y genera la declaration letter
-    
-    Args:
-        document_id: ID del documento a procesar
-        db: Sesión de base de datos
-        ai: Procesador de IA
-    
-    Returns:
-        DocumentProcessResponse con el documento generado
-    """
+    """ Función principal para generar documentos con streaming """
     doc_repo = DocumentRepository(db)
     log_repo = LogRepository(db)
+    
+    # Configuración según tipo de documento
+    config = {
+        'declaration': {
+            'action_start': 'process_start',
+            'action_complete': 'process_complete',
+            'action_error': 'error',
+            'details_start': 'Iniciando procesamiento del documento (streaming)',
+            'error_prefix': 'Documento',
+            'filename_prefix': 'declaration_letter',
+            'requires_file': True,
+            'update_status': True,
+            'update_method': lambda doc_id, content, filename: doc_repo.update_document_content(
+                doc_id, content, filename
+            ),
+            'generate_method': lambda ai, text: ai.generate_declaration_letter_stream(text)
+        },
+        'cover': {
+            'action_start': 'cover_letter_start',
+            'action_complete': 'cover_letter_complete',
+            'action_error': 'cover_letter_error',
+            'details_start': 'Iniciando generación de Cover Letter (streaming)',
+            'error_prefix': 'Cover Letter',
+            'filename_prefix': 'cover_letter',
+            'requires_file': False,
+            'update_status': False,
+            'update_method': lambda doc_id, content, filename: doc_repo.update_cover_letter_content(
+                doc_id, content, filename
+            ),
+            'generate_method': lambda ai, text: ai.generate_cover_letter_stream(text)
+        }
+    }
+    
+    if document_type not in config:
+        yield f"data: {json.dumps({'type': 'error', 'error': 'Tipo de documento inválido'})}\n\n"
+        return
+    
+    cfg = config[document_type]
     
     try:
         # Obtener documento de la base de datos
         document = doc_repo.get_document(document_id)
         
         if not document:
-            raise HTTPException(status_code=404, detail="Documento no encontrado")
+            yield f"data: {json.dumps({'type': 'error', 'error': 'Documento no encontrado'})}\n\n"
+            return
         
-        # Actualizar estado a procesando
-        doc_repo.update_document_status(document_id, "processing")
-        
-        # Crear log
-        log_repo.create_log(
-            document_id=document_id,
-            action="process_start",
-            details="Iniciando procesamiento del documento"
-        )
-        
-        # Extraer texto del archivo
-        file_path = UPLOAD_FOLDER / document.filename
-        
-        if not file_path.exists():
-            error_msg = "Archivo fuente no encontrado"
-            doc_repo.update_document_status(document_id, "error", error_msg)
-            log_repo.create_log(document_id, "error", error_msg)
-            raise HTTPException(status_code=404, detail=error_msg)
-        
-        questionnaire_text = ai.extract_text_from_file(str(file_path))
-        
-        if not questionnaire_text or len(questionnaire_text.strip()) == 0:
-            error_msg = "No se pudo extraer texto del archivo o el archivo está vacío"
-            doc_repo.update_document_status(document_id, "error", error_msg)
-            log_repo.create_log(document_id, "error", error_msg)
-            raise HTTPException(status_code=400, detail=error_msg)
-        
-        # Generar declaration letter
-        try:
-            markdown_content = ai.generate_declaration_letter(questionnaire_text)
-        except Exception as ai_error:
-            error_msg = f"Error en la API de IA: {str(ai_error)}"
-            doc_repo.update_document_status(document_id, "error", error_msg)
-            log_repo.create_log(document_id, "error", error_msg)
+        # Validaciones específicas según tipo
+        if cfg['requires_file']:
+            # Declaration Letter: necesita procesar archivo
+            if cfg['update_status']:
+                doc_repo.update_document_status(document_id, "processing")
             
-            # Verificar si es un error de timeout
-            if "timeout" in str(ai_error).lower() or "timed out" in str(ai_error).lower():
-                raise HTTPException(
-                    status_code=504, 
-                    detail=f"La generación del Declaration Letter excedió el tiempo límite de {GEMINI_TIMEOUT} segundos. El documento es muy extenso o el servidor está muy ocupado. Por favor, intente nuevamente en unos momentos."
-                )
-            else:
-                raise HTTPException(
-                    status_code=500, 
-                    detail=f"Error al comunicarse con el servicio de IA: {str(ai_error)}. Por favor, intente nuevamente."
-                )
-        
-        if not markdown_content or len(markdown_content.strip()) == 0:
-            error_msg = "La IA generó un documento vacío"
-            doc_repo.update_document_status(document_id, "error", error_msg)
-            log_repo.create_log(document_id, "error", error_msg)
-            raise HTTPException(
-                status_code=500, 
-                detail="Error al generar la declaration letter. El contenido generado está vacío."
-            )
-        
-        # Generar nombre de archivo (solo para referencia, no se guarda físicamente)
-        generated_filename = f"declaration_letter_{document_id}_{uuid.uuid4().hex[:8]}.docx"
-        
-        # Actualizar base de datos
-        doc_repo.update_document_content(
-            document_id,
-            markdown_content,
-            generated_filename
-        )
-        
-        # Crear log
-        log_repo.create_log(
-            document_id=document_id,
-            action="process_complete",
-            details=f"Documento generado: {generated_filename}"
-        )
-        
-        return DocumentProcessResponse(
-            success=True,
-            message="Declaration letter generada exitosamente",
-            document_id=document_id,
-            markdown_content=markdown_content,
-            generated_filename=generated_filename,
-            download_url=f"/api/download/{document_id}"
-        )
-    
-    except HTTPException:
-        raise
-    except Exception as e:
-        # Capturar cualquier otro error no manejado
-        error_msg = f"Error inesperado: {str(e)}"
-        try:
-            doc_repo.update_document_status(document_id, "error", error_msg)
-            log_repo.create_log(document_id, "error", error_msg)
-        except:
-            pass  # Si falla el log, al menos lanzar el error al cliente
-        
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Error al procesar documento. Por favor, intente nuevamente."
-        )
-
-
-@app.post("/api/regenerate", response_model=DocumentProcessResponse)
-async def regenerate_document(
-    request: RegenerateRequest,
-    db: Session = Depends(get_db),
-    ai: AIProcessor = Depends(get_ai_processor)
-):
-    """
-    Regenera una declaration letter existente
-    
-    Args:
-        request: Solicitud con el ID del documento
-        db: Sesión de base de datos
-        ai: Procesador de IA
-    
-    Returns:
-        DocumentProcessResponse con el nuevo documento generado
-    """
-    # Simplemente llama a process_document nuevamente
-    return await process_document(request.document_id, db, ai)
-
-
-@app.get("/api/process/{document_id}/stream")
-async def process_document_stream(
-    document_id: int,
-    db: Session = Depends(get_db),
-    ai: AIProcessor = Depends(get_ai_processor)
-):
-    """
-    Procesa un documento y genera la declaration letter con streaming (SSE)
-    
-    Args:
-        document_id: ID del documento a procesar
-        db: Sesión de base de datos
-        ai: Procesador de IA
-    
-    Returns:
-        StreamingResponse con Server-Sent Events
-    """
-    async def event_generator():
-        doc_repo = DocumentRepository(db)
-        log_repo = LogRepository(db)
-        
-        try:
-            # Obtener documento de la base de datos
-            document = doc_repo.get_document(document_id)
-            
-            if not document:
-                yield f"data: {json.dumps({'type': 'error', 'error': 'Documento no encontrado'})}\n\n"
-                return
-            
-            # Actualizar estado a procesando
-            doc_repo.update_document_status(document_id, "processing")
-            
-            # Crear log
+            # Crear log inicial
             log_repo.create_log(
                 document_id=document_id,
-                action="process_start",
-                details="Iniciando procesamiento del documento (streaming)"
+                action=cfg['action_start'],
+                details=cfg['details_start']
             )
             
             # Extraer texto del archivo
@@ -419,182 +457,113 @@ async def process_document_stream(
             if not file_path.exists():
                 error_msg = "Archivo fuente no encontrado"
                 doc_repo.update_document_status(document_id, "error", error_msg)
-                log_repo.create_log(document_id, "error", error_msg)
+                log_repo.create_log(document_id, cfg['action_error'], error_msg)
                 yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
                 return
             
-            questionnaire_text = ai.extract_text_from_file(str(file_path))
+            source_text = ai_processor.extract_text_from_file(str(file_path))
             
-            if not questionnaire_text or len(questionnaire_text.strip()) == 0:
+            if not source_text or len(source_text.strip()) == 0:
                 error_msg = "No se pudo extraer texto del archivo o el archivo está vacío"
                 doc_repo.update_document_status(document_id, "error", error_msg)
-                log_repo.create_log(document_id, "error", error_msg)
+                log_repo.create_log(document_id, cfg['action_error'], error_msg)
                 yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
                 return
-            
-            # Generar declaration letter con streaming
-            full_content = ""
-            try:
-                for chunk in ai.generate_declaration_letter_stream(questionnaire_text):
-                    full_content += chunk
-                    # Enviar chunk al cliente
-                    yield f"data: {json.dumps({'type': 'content', 'chunk': chunk})}\n\n"
-                    await asyncio.sleep(0)  # Permitir que otros tasks se ejecuten
-                
-            except Exception as ai_error:
-                error_msg = f"Error en la API de IA: {str(ai_error)}"
-                doc_repo.update_document_status(document_id, "error", error_msg)
-                log_repo.create_log(document_id, "error", error_msg)
-                yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
-                return
-            
-            if not full_content or len(full_content.strip()) == 0:
-                error_msg = "La IA generó un documento vacío"
-                doc_repo.update_document_status(document_id, "error", error_msg)
-                log_repo.create_log(document_id, "error", error_msg)
-                yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
-                return
-            
-            # Generar nombre de archivo (solo para referencia, no se guarda físicamente)
-            generated_filename = f"declaration_letter_{document_id}_{uuid.uuid4().hex[:8]}.docx"
-            
-            # Actualizar base de datos
-            doc_repo.update_document_content(
-                document_id,
-                full_content,
-                generated_filename
-            )
-            
-            # Crear log
-            log_repo.create_log(
-                document_id=document_id,
-                action="process_complete",
-                details=f"Documento generado: {generated_filename}"
-            )
-            
-            # Enviar evento de completado
-            yield f"data: {json.dumps({'type': 'complete', 'filename': generated_filename})}\n\n"
-            
-        except Exception as e:
-            error_msg = f"Error inesperado: {str(e)}"
-            try:
-                doc_repo.update_document_status(document_id, "error", error_msg)
-                log_repo.create_log(document_id, "error", error_msg)
-            except:
-                pass
-            yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
-    
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no"
-        }
-    )
-
-
-@app.get("/api/generate-cover-letter/{document_id}/stream")
-async def generate_cover_letter_stream(
-    document_id: int,
-    db: Session = Depends(get_db),
-    ai: AIProcessor = Depends(get_ai_processor)
-):
-    """
-    Genera un Cover Letter con streaming (SSE)
-    
-    Args:
-        document_id: ID del documento con el Declaration Letter
-        db: Sesión de base de datos
-        ai: Procesador de IA
-    
-    Returns:
-        StreamingResponse con Server-Sent Events
-    """
-    async def event_generator():
-        doc_repo = DocumentRepository(db)
-        log_repo = LogRepository(db)
-        
-        try:
-            # Obtener documento de la base de datos
-            document = doc_repo.get_document(document_id)
-            
-            if not document:
-                yield f"data: {json.dumps({'type': 'error', 'error': 'Documento no encontrado'})}\n\n"
-                return
-            
-            # Verificar que el Declaration Letter ya haya sido generado
+        else:
+            # Cover Letter: usa Declaration Letter existente
             if not document.markdown_content:
                 yield f"data: {json.dumps({'type': 'error', 'error': 'El Declaration Letter debe ser generado primero'})}\n\n"
                 return
             
-            # Crear log
+            # Crear log inicial
             log_repo.create_log(
                 document_id=document_id,
-                action="cover_letter_start",
-                details="Iniciando generación de Cover Letter (streaming)"
+                action=cfg['action_start'],
+                details=cfg['details_start']
             )
             
-            # Generar Cover Letter con streaming
-            full_content = ""
-            try:
-                for chunk in ai.generate_cover_letter_stream(document.markdown_content):
-                    full_content += chunk
-                    # Enviar chunk al cliente
-                    yield f"data: {json.dumps({'type': 'content', 'chunk': chunk})}\n\n"
-                    await asyncio.sleep(0)  # Permitir que otros tasks se ejecuten
-                
-            except Exception as ai_error:
-                error_msg = f"Error en la API de IA: {str(ai_error)}"
-                log_repo.create_log(document_id, "cover_letter_error", error_msg)
-                yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
-                return
+            source_text = document.markdown_content
+        
+        # Generar contenido con streaming
+        full_content = ""
+        try:
+            for chunk in cfg['generate_method'](ai_processor, source_text):
+                full_content += chunk
+                # Enviar chunk al cliente
+                yield f"data: {json.dumps({'type': 'content', 'chunk': chunk})}\n\n"
+                await asyncio.sleep(0)  # Permitir que otros tasks se ejecuten
             
-            if not full_content or len(full_content.strip()) == 0:
-                error_msg = "La IA generó un Cover Letter vacío"
-                log_repo.create_log(document_id, "cover_letter_error", error_msg)
-                yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
-                return
-            
-            # Generar nombre de archivo (solo para referencia, no se guarda físicamente)
-            cover_letter_filename = f"cover_letter_{document_id}_{uuid.uuid4().hex[:8]}.docx"
-            
-            # Actualizar base de datos con el Cover Letter
-            doc_repo.update_cover_letter_content(
-                document_id,
-                full_content,
-                cover_letter_filename
-            )
-            
-            # Crear log
-            log_repo.create_log(
-                document_id=document_id,
-                action="cover_letter_complete",
-                details=f"Cover Letter generado: {cover_letter_filename}"
-            )
-            
-            # Enviar evento de completado
-            yield f"data: {json.dumps({'type': 'complete', 'filename': cover_letter_filename})}\n\n"
-            
-        except Exception as e:
-            error_msg = f"Error inesperado: {str(e)}"
-            try:
-                log_repo.create_log(document_id, "cover_letter_error", error_msg)
-            except:
-                pass
+        except Exception as ai_error:
+            error_msg = f"Error en la API de IA: {str(ai_error)}"
+            if cfg['update_status']:
+                doc_repo.update_document_status(document_id, "error", error_msg)
+            log_repo.create_log(document_id, cfg['action_error'], error_msg)
             yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
+            return
+        
+        if not full_content or len(full_content.strip()) == 0:
+            error_msg = f"La IA generó un {cfg['error_prefix']} vacío"
+            if cfg['update_status']:
+                doc_repo.update_document_status(document_id, "error", error_msg)
+            log_repo.create_log(document_id, cfg['action_error'], error_msg)
+            yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
+            return
+        
+        # Generar nombre de archivo
+        generated_filename = f"{cfg['filename_prefix']}_{document_id}_{uuid.uuid4().hex[:8]}.docx"
+        
+        # Actualizar base de datos
+        cfg['update_method'](document_id, full_content, generated_filename)
+        
+        # Crear log de finalización
+        log_repo.create_log(
+            document_id=document_id,
+            action=cfg['action_complete'],
+            details=f"{cfg['error_prefix']} generado: {generated_filename}"
+        )
+        
+        # Enviar evento de completado
+        yield f"data: {json.dumps({'type': 'complete', 'filename': generated_filename})}\n\n"
+        
+    except Exception as e:
+        error_msg = f"Error inesperado: {str(e)}"
+        try:
+            if cfg['update_status']:
+                doc_repo.update_document_status(document_id, "error", error_msg)
+            log_repo.create_log(document_id, cfg['action_error'], error_msg)
+        except:
+            pass
+        yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
+
+@app.get("/api/process/{document_id}/stream")
+async def process_document_stream(
+    document_id: int,
+    ai_provider: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """ Procesa un documento y genera la Declaration Letter con streaming (SSE) """
+    ai = get_ai_processor(ai_provider)
     
     return StreamingResponse(
-        event_generator(),
+        _generate_document_stream(document_id, ai, db, 'declaration'),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no"
-        }
+        headers=STREAMING_HEADERS
     )
 
+@app.get("/api/generate-cover-letter/{document_id}/stream")
+async def generate_cover_letter_stream(
+    document_id: int,
+    ai_provider: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """ Genera un Cover Letter con streaming (SSE) """
+    ai = get_ai_processor(ai_provider)
+    
+    return StreamingResponse(
+        _generate_document_stream(document_id, ai, db, 'cover'),
+        media_type="text/event-stream",
+        headers=STREAMING_HEADERS
+    )
 
 @app.get("/api/status/{document_id}", response_model=DocumentStatusResponse)
 async def get_document_status(
@@ -612,10 +581,7 @@ async def get_document_status(
         DocumentStatusResponse con el estado del documento
     """
     doc_repo = DocumentRepository(db)
-    document = doc_repo.get_document(document_id)
-    
-    if not document:
-        raise HTTPException(status_code=404, detail="Documento no encontrado")
+    document = _get_document_or_404(doc_repo, document_id)
     
     return DocumentStatusResponse(
         document_id=document.id,
@@ -626,232 +592,43 @@ async def get_document_status(
         error_message=document.error_message
     )
 
-
 @app.get("/api/download/{document_id}")
 async def download_document(
     document_id: int,
     db: Session = Depends(get_db)
 ):
-    """
-    Descarga el documento generado (generado on-the-fly en memoria)
-    
-    Args:
-        document_id: ID del documento
-        db: Sesión de base de datos
-    
-    Returns:
-        Response con el archivo DOCX generado en memoria
-    """
+    """ Descarga el Declaration Letter generado (on-the-fly en memoria) """
     doc_repo = DocumentRepository(db)
-    document = doc_repo.get_document(document_id)
-    
-    if not document:
-        raise HTTPException(status_code=404, detail="Documento no encontrado")
+    document = _get_document_or_404(doc_repo, document_id)
     
     if not document.markdown_content:
         raise HTTPException(status_code=400, detail="Documento no procesado aún")
     
-    # Generar DOCX en memoria
-    try:
-        docx_binary = convert_md_text_to_docx_binary(document.markdown_content)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Error al generar archivo DOCX: {str(e)}"
-        )
-    
-    return Response(
-        content=docx_binary,
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={
-            "Content-Disposition": f"attachment; filename=declaration_letter.docx"
-        }
-    )
-
+    return _create_docx_response(document.markdown_content, "declaration_letter.docx")
 
 @app.get("/api/preview/{document_id}")
 async def preview_document(
     document_id: int,
     db: Session = Depends(get_db)
 ):
-    """
-    Obtiene la vista previa del documento (contenido Markdown)
-    
-    Args:
-        document_id: ID del documento
-        db: Sesión de base de datos
-    
-    Returns:
-        JSON con el contenido Markdown
-    """
+    """ Obtiene la vista previa del Declaration Letter (contenido Markdown) """
     doc_repo = DocumentRepository(db)
-    document = doc_repo.get_document(document_id)
-    
-    if not document:
-        raise HTTPException(status_code=404, detail="Documento no encontrado")
-    
-    if not document.markdown_content:
-        raise HTTPException(status_code=400, detail="Documento no procesado aún")
-    
-    return JSONResponse(content={
-        "success": True,
-        "document_id": document_id,
-        "markdown_content": document.markdown_content,
-        "generated_filename": document.generated_filename
-    })
-
-
-@app.post("/api/generate-cover-letter/{document_id}", response_model=CoverLetterGenerateResponse)
-async def generate_cover_letter(
-    document_id: int,
-    db: Session = Depends(get_db),
-    ai: AIProcessor = Depends(get_ai_processor)
-):
-    """
-    Genera un Cover Letter basado en el Declaration Letter existente
-    
-    Args:
-        document_id: ID del documento con el Declaration Letter
-        db: Sesión de base de datos
-        ai: Procesador de IA
-    
-    Returns:
-        CoverLetterGenerateResponse con el Cover Letter generado
-    """
-    doc_repo = DocumentRepository(db)
-    log_repo = LogRepository(db)
-    
-    try:
-        # Obtener documento de la base de datos
-        document = doc_repo.get_document(document_id)
-        
-        if not document:
-            raise HTTPException(status_code=404, detail="Documento no encontrado")
-        
-        # Verificar que el Declaration Letter ya haya sido generado
-        if not document.markdown_content:
-            raise HTTPException(
-                status_code=400, 
-                detail="El Declaration Letter debe ser generado primero"
-            )
-        
-        # Crear log
-        log_repo.create_log(
-            document_id=document_id,
-            action="cover_letter_start",
-            details="Iniciando generación de Cover Letter"
-        )
-        
-        # Generar Cover Letter usando el Declaration Letter como base
-        try:
-            cover_letter_markdown = ai.generate_cover_letter(document.markdown_content)
-        except Exception as ai_error:
-            error_msg = f"Error en la API de IA: {str(ai_error)}"
-            log_repo.create_log(document_id, "cover_letter_error", error_msg)
-            
-            # Verificar si es un error de timeout
-            if "timeout" in str(ai_error).lower() or "timed out" in str(ai_error).lower():
-                raise HTTPException(
-                    status_code=504, 
-                    detail=f"La generación del Cover Letter excedió el tiempo límite de {GEMINI_TIMEOUT} segundos. El documento es muy extenso o el servidor está muy ocupado. Por favor, intente nuevamente en unos momentos."
-                )
-            else:
-                raise HTTPException(
-                    status_code=500, 
-                    detail=f"Error al comunicarse con el servicio de IA: {str(ai_error)}. Por favor, intente nuevamente."
-                )
-        
-        if not cover_letter_markdown or len(cover_letter_markdown.strip()) == 0:
-            error_msg = "La IA generó un Cover Letter vacío"
-            log_repo.create_log(document_id, "cover_letter_error", error_msg)
-            raise HTTPException(
-                status_code=500, 
-                detail="Error al generar el Cover Letter. El contenido generado está vacío."
-            )
-        
-        # Generar nombre de archivo (solo para referencia, no se guarda físicamente)
-        cover_letter_filename = f"cover_letter_{document_id}_{uuid.uuid4().hex[:8]}.docx"
-        
-        # Actualizar base de datos con el Cover Letter
-        doc_repo.update_cover_letter_content(
-            document_id,
-            cover_letter_markdown,
-            cover_letter_filename
-        )
-        
-        # Crear log
-        log_repo.create_log(
-            document_id=document_id,
-            action="cover_letter_complete",
-            details=f"Cover Letter generado: {cover_letter_filename}"
-        )
-        
-        return CoverLetterGenerateResponse(
-            success=True,
-            message="Cover Letter generado exitosamente",
-            document_id=document_id,
-            cover_letter_markdown=cover_letter_markdown,
-            cover_letter_filename=cover_letter_filename,
-            download_url=f"/api/download-cover-letter/{document_id}"
-        )
-    
-    except HTTPException:
-        raise
-    except Exception as e:
-        # Capturar cualquier otro error no manejado
-        error_msg = f"Error inesperado: {str(e)}"
-        try:
-            log_repo.create_log(document_id, "cover_letter_error", error_msg)
-        except:
-            pass
-        
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Error al generar Cover Letter. Por favor, intente nuevamente."
-        )
-
+    document = _get_document_or_404(doc_repo, document_id)
+    return _create_preview_response(document, document_id, "declaration")
 
 @app.get("/api/download-cover-letter/{document_id}")
 async def download_cover_letter(
     document_id: int,
     db: Session = Depends(get_db)
 ):
-    """
-    Descarga el Cover Letter generado (generado on-the-fly en memoria)
-    
-    Args:
-        document_id: ID del documento
-        db: Sesión de base de datos
-    
-    Returns:
-        Response con el archivo DOCX del Cover Letter generado en memoria
-    """
+    """ Descarga el Cover Letter generado (on-the-fly en memoria) """
     doc_repo = DocumentRepository(db)
-    document = doc_repo.get_document(document_id)
-    
-    if not document:
-        raise HTTPException(status_code=404, detail="Documento no encontrado")
+    document = _get_document_or_404(doc_repo, document_id)
     
     if not document.cover_letter_markdown:
         raise HTTPException(status_code=400, detail="Cover Letter no generado aún")
     
-    # Generar DOCX en memoria
-    try:
-        docx_binary = convert_md_text_to_docx_binary(document.cover_letter_markdown)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Error al generar archivo DOCX del Cover Letter: {str(e)}"
-        )
-    
-    return Response(
-        content=docx_binary,
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={
-            "Content-Disposition": f"attachment; filename=cover_letter.docx"
-        }
-    )
-
+    return _create_docx_response(document.cover_letter_markdown, "cover_letter.docx")
 
 @app.post("/api/download-edited/{document_id}/{document_type}")
 async def download_edited_document(
@@ -860,178 +637,26 @@ async def download_edited_document(
     request: dict,
     db: Session = Depends(get_db)
 ):
-    """
-    Descarga un documento con contenido editado por el usuario
-    
-    Args:
-        document_id: ID del documento
-        document_type: Tipo de documento ('declaration' o 'cover')
-        request: Diccionario con el contenido editado
-        db: Sesión de base de datos
-    
-    Returns:
-        Response con el archivo DOCX generado con el contenido editado
-    """
-    # Obtener contenido editado del request
+    """ Descarga un documento con contenido editado por el usuario """
     edited_content = request.get('content')
     
     if not edited_content:
         raise HTTPException(status_code=400, detail="Contenido editado no proporcionado")
     
-    # Generar DOCX en memoria con el contenido editado
-    try:
-        docx_binary = convert_md_text_to_docx_binary(edited_content)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Error al generar archivo DOCX editado: {str(e)}"
-        )
-    
-    # Determinar nombre de archivo
     filename = f"{document_type}_{document_id}_edited.docx"
-    
-    return Response(
-        content=docx_binary,
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={
-            "Content-Disposition": f"attachment; filename={filename}"
-        }
-    )
-
+    return _create_docx_response(edited_content, filename)
 
 @app.get("/api/preview-cover-letter/{document_id}")
 async def preview_cover_letter(
     document_id: int,
     db: Session = Depends(get_db)
 ):
-    """
-    Obtiene la vista previa del Cover Letter (contenido Markdown)
-    
-    Args:
-        document_id: ID del documento
-        db: Sesión de base de datos
-    
-    Returns:
-        JSON con el contenido Markdown del Cover Letter
-    """
+    """ Obtiene la vista previa del Cover Letter (contenido Markdown) """
     doc_repo = DocumentRepository(db)
-    document = doc_repo.get_document(document_id)
-    
-    if not document:
-        raise HTTPException(status_code=404, detail="Documento no encontrado")
-    
-    if not document.cover_letter_markdown:
-        raise HTTPException(status_code=400, detail="Cover Letter no generado aún")
-    
-    return JSONResponse(content={
-        "success": True,
-        "document_id": document_id,
-        "cover_letter_markdown": document.cover_letter_markdown,
-        "cover_letter_filename": document.cover_letter_filename
-    })
+    document = _get_document_or_404(doc_repo, document_id)
+    return _create_preview_response(document, document_id, "cover")
 
-
-# ==================== CHAT CON MEMORIA ====================
-
-@app.post("/api/chat", response_model=ChatResponse)
-async def chat_with_ai(
-    chat_message: ChatMessage,
-    db: Session = Depends(get_db)
-):
-    """
-    Endpoint de chat con IA y memoria para modificar documentos
-    
-    Args:
-        chat_message: Mensaje del usuario con contexto del documento
-        db: Sesión de base de datos
-    
-    Returns:
-        Respuesta del chat con posibles modificaciones
-    """
-    if not chat_system:
-        raise HTTPException(
-            status_code=503, 
-            detail="Sistema de chat no disponible. Verifique las API keys."
-        )
-    
-    try:
-        # Obtener el documento
-        doc_repo = DocumentRepository(db)
-        document = doc_repo.get_document(chat_message.document_id)
-        
-        if not document:
-            raise HTTPException(status_code=404, detail="Documento no encontrado")
-        
-        # Obtener el contenido del documento según el tipo
-        if chat_message.document_type == "declaration":
-            document_content = document.markdown_content
-        elif chat_message.document_type == "cover":
-            document_content = document.cover_letter_markdown
-        else:
-            raise HTTPException(status_code=400, detail="Tipo de documento inválido")
-        
-        if not document_content:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"{chat_message.document_type.title()} Letter no generado aún"
-            )
-        
-        # Generar ID de usuario único (puede ser una sesión o user ID real)
-        user_id = chat_message.user_id or f"user_{chat_message.document_id}"
-        
-        # Generar respuesta del chat
-        response = chat_system.chat(
-            user_message=chat_message.message,
-            user_id=user_id,
-            document_content=document_content,
-            document_type=chat_message.document_type,
-            save_to_memory=True
-        )
-        
-        # Verificar si la respuesta contiene texto modificado
-        has_modification = "MODIFIED_TEXT:" in response
-        modified_text = None
-        
-        if has_modification:
-            # Extraer el texto modificado
-            parts = response.split("MODIFIED_TEXT:", 1)  # Solo dividir en la primera ocurrencia
-            if len(parts) > 1:
-                # Tomar el texto después de "MODIFIED_TEXT:"
-                modified_text = parts[1].strip()
-                
-                # Limpiar bloques de código markdown si los hay
-                if modified_text.startswith("```"):
-                    # Quitar bloques de código markdown
-                    lines = modified_text.split("\n")
-                    # Remover primera línea (```)
-                    if lines[0].strip().startswith("```"):
-                        lines = lines[1:]
-                    # Remover última línea si es ```
-                    if lines and lines[-1].strip() == "```":
-                        lines = lines[:-1]
-                    modified_text = "\n".join(lines)
-                
-                # Limpiar espacios en blanco al inicio/final pero preservar estructura interna
-                modified_text = modified_text.strip()
-        
-        return ChatResponse(
-            success=True,
-            message="Respuesta generada exitosamente",
-            response=response,
-            has_modification=has_modification,
-            modified_text=modified_text
-        )
-        
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        print(f"Error en chat: {e}")
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Error al procesar el mensaje: {str(e)}"
-        )
-
-
+# CHAT CON MEMORIA (STREAMING)
 @app.post("/api/chat/stream")
 async def chat_with_ai_stream(
     chat_message: ChatMessage,
@@ -1055,25 +680,14 @@ async def chat_with_ai_stream(
     
     async def event_generator():
         try:
-            # Obtener el documento
+            # Obtener el documento y su contenido
             doc_repo = DocumentRepository(db)
-            document = doc_repo.get_document(chat_message.document_id)
             
-            if not document:
-                yield f"data: {json.dumps({'type': 'error', 'error': 'Documento no encontrado'})}\n\n"
-                return
-            
-            # Obtener el contenido del documento según el tipo
-            if chat_message.document_type == "declaration":
-                document_content = document.markdown_content
-            elif chat_message.document_type == "cover":
-                document_content = document.cover_letter_markdown
-            else:
-                yield f"data: {json.dumps({'type': 'error', 'error': 'Tipo de documento inválido'})}\n\n"
-                return
-            
-            if not document_content:
-                yield f"data: {json.dumps({'type': 'error', 'error': f'{chat_message.document_type.title()} Letter no generado aún'})}\n\n"
+            try:
+                document = _get_document_or_404(doc_repo, chat_message.document_id)
+                document_content = _get_document_content(document, chat_message.document_type)
+            except HTTPException as he:
+                yield f"data: {json.dumps({'type': 'error', 'error': he.detail})}\n\n"
                 return
             
             # Generar ID de usuario único
@@ -1098,26 +712,8 @@ async def chat_with_ai_stream(
                 yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
                 return
             
-            # Verificar si la respuesta contiene texto modificado
-            has_modification = "MODIFIED_TEXT:" in full_response
-            modified_text = None
-            
-            if has_modification:
-                # Extraer el texto modificado
-                parts = full_response.split("MODIFIED_TEXT:", 1)
-                if len(parts) > 1:
-                    modified_text = parts[1].strip()
-                    
-                    # Limpiar bloques de código markdown si los hay
-                    if modified_text.startswith("```"):
-                        lines = modified_text.split("\n")
-                        if lines[0].strip().startswith("```"):
-                            lines = lines[1:]
-                        if lines and lines[-1].strip() == "```":
-                            lines = lines[:-1]
-                        modified_text = "\n".join(lines)
-                    
-                    modified_text = modified_text.strip()
+            # Extraer texto modificado si existe
+            has_modification, modified_text = _extract_modified_text(full_response)
             
             # Guardar en memoria después de completar
             chat_system.save_conversation(user_id, chat_message.message, full_response)
@@ -1127,19 +723,14 @@ async def chat_with_ai_stream(
             
         except Exception as e:
             error_msg = f"Error inesperado: {str(e)}"
-            print(f"Error en chat stream: {e}")
+            logger.error(f"Error en chat stream: {e}")
             yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
     
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no"
-        }
+        headers=STREAMING_HEADERS
     )
-
 
 @app.delete("/api/chat/memory/{user_id}")
 async def clear_chat_memory(user_id: str):
@@ -1165,15 +756,13 @@ async def clear_chat_memory(user_id: str):
             "message": f"Memoria limpiada para usuario {user_id}"
         })
     except Exception as e:
-        print(f"Error limpiando memoria: {e}")
+        logger.error(f"Error limpiando memoria: {e}")
         raise HTTPException(
             status_code=500,
             detail=f"Error al limpiar memoria: {str(e)}"
         )
 
-
-# ==================== INICIO DE LA APLICACIÓN ====================
-
+''' Hilo principal de la aplicación '''
 if __name__ == "__main__":
     import uvicorn
     
@@ -1181,12 +770,9 @@ if __name__ == "__main__":
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", "8000"))
     
-    print("\n" + "="*60)
-    print("DeclarationLetterOnline - Sistema de Automatización")
-    print("="*60)
-    print(f"Servidor: http://{host}:{port}")
-    print(f"Documentación API: http://{host}:{port}/docs")
-    print("="*60 + "\n")
+    logger.info("Automation System for Declaration Letters and Cover Letters")
+    logger.info(f"Servidor: http://{host}:{port}")
+    logger.info(f"Documentación API: http://{host}:{port}/docs")
     
     uvicorn.run(
         "backend.main:app",
