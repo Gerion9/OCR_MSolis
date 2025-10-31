@@ -1,51 +1,57 @@
 """
 Sistema de Chat con Memoria usando mem0
 Permite a los usuarios modificar documentos mediante conversación con IA
+ACTUALIZADO: Ahora soporta múltiples proveedores de IA
 """
 
 import os
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
-import google.generativeai as genai
 from mem0 import MemoryClient
+
+from backend.providers.base_provider import BaseAIProvider, ProviderConfig
+from backend.providers.gemini_provider import GeminiProvider
 
 
 class ChatMemorySystem:
     """
     Sistema de chat con memoria a largo plazo usando mem0
+    Ahora agnóstico del proveedor de IA
     """
     
-    def __init__(self, mem0_api_key: str, google_api_key: str, model_name: str):
+    def __init__(self, mem0_api_key: str, google_api_key: str, model_name: str, ai_provider: Optional[BaseAIProvider] = None):
         """
         Inicializa el sistema de chat con memoria
         
         Args:
             mem0_api_key: API key de mem0
-            google_api_key: API key de Google Gemini
-            model_name: Nombre del modelo de Gemini a usar
+            google_api_key: API key del proveedor de IA (para compatibilidad backwards)
+            model_name: Nombre del modelo a usar (para compatibilidad backwards)
+            ai_provider: Instancia de un proveedor de IA (opcional, si no se provee usa Gemini)
         """
         self.mem0_api_key = mem0_api_key
-        self.google_api_key = google_api_key
-        self.model_name = model_name
         
         # Inicializar mem0
         self.memory_client = MemoryClient(api_key=mem0_api_key)
         
-        # Configurar Gemini
-        genai.configure(api_key=google_api_key)
+        # Configurar proveedor de IA
+        if ai_provider:
+            # Usar proveedor personalizado
+            self.ai_provider = ai_provider
+        else:
+            # Compatibilidad backwards: usar Gemini por defecto
+            config = ProviderConfig(
+                api_key=google_api_key,
+                model_name=model_name,
+                request_timeout=300,
+                temperature=0.7,
+                top_p=0.95,
+                top_k=40
+            )
+            self.ai_provider = GeminiProvider(config)
         
-        # Configuración del modelo
-        self.generation_config = {
-            "temperature": 0.7,
-            "top_p": 0.95,
-            "top_k": 40,
-            "max_output_tokens": 8000,  # Aumentado para permitir documentos completos
-        }
-        
-        self.model = genai.GenerativeModel(
-            model_name=model_name,
-            generation_config=self.generation_config
-        )
+        # Para compatibilidad con código existente
+        self.model_name = model_name
         
         # Prompt del sistema
         self.system_prompt = """You are an intelligent assistant helping users edit and improve their Declaration Letters and Cover Letters for T-Visa petitions.
@@ -168,11 +174,11 @@ DO NOT answer requests that are not related to your capabilities."""
             # Construir prompt completo
             full_prompt = self._build_prompt(user_message, user_id, document_content, document_type)
             
-            # Generar respuesta
-            response = self.model.generate_content(full_prompt)
+            # Generar respuesta usando el proveedor de IA
+            response = self._generate_with_provider(full_prompt)
             
-            if response and response.text:
-                return response.text
+            if response:
+                return response
             else:
                 return "I apologize, but I couldn't generate a response. Please try rephrasing your question."
                 
@@ -203,12 +209,10 @@ DO NOT answer requests that are not related to your capabilities."""
             # Construir prompt completo
             full_prompt = self._build_prompt(user_message, user_id, document_content, document_type)
             
-            # Generar respuesta con streaming
-            response = self.model.generate_content(full_prompt, stream=True)
-            
-            for chunk in response:
-                if chunk.text:
-                    yield chunk.text
+            # Generar respuesta con streaming usando el proveedor de IA
+            for chunk in self._generate_with_provider_stream(full_prompt):
+                if chunk:
+                    yield chunk
                     
         except Exception as e:
             print(f"Error generating response stream: {e}")
@@ -280,9 +284,56 @@ CRITICAL RULES:
 - DO NOT truncate or shorten the document
 - DO NOT say "rest remains the same" - actually output everything
 - Include ALL sections: beginning, middle, and end
-- You have {self.generation_config['max_output_tokens']} tokens available - use them for complete output"""
+- You have sufficient tokens available - use them for complete output"""
 
         return full_prompt
+    
+    def _generate_with_provider(self, prompt: str) -> Optional[str]:
+        """
+        Genera respuesta usando el proveedor de IA configurado
+        
+        Args:
+            prompt: Prompt completo
+        
+        Returns:
+            Respuesta generada
+        """
+        try:
+            # Si el proveedor es Gemini, usar su método directo
+            if isinstance(self.ai_provider, GeminiProvider):
+                response = self.ai_provider.model.generate_content(prompt)
+                return response.text if response and response.text else None
+            else:
+                # Para otros proveedores, usar método genérico
+                # (esto requerirá implementar un método genérico en BaseAIProvider)
+                return self.ai_provider._generate_content(prompt, use_stream=False)
+        except Exception as e:
+            print(f"Error generating response: {e}")
+            return None
+    
+    def _generate_with_provider_stream(self, prompt: str):
+        """
+        Genera respuesta con streaming usando el proveedor de IA configurado
+        
+        Args:
+            prompt: Prompt completo
+        
+        Yields:
+            Chunks de texto
+        """
+        try:
+            # Si el proveedor es Gemini, usar su método directo
+            if isinstance(self.ai_provider, GeminiProvider):
+                response = self.ai_provider.model.generate_content(prompt, stream=True)
+                for chunk in response:
+                    if chunk.text:
+                        yield chunk.text
+            else:
+                # Para otros proveedores, usar método genérico
+                yield from self.ai_provider._generate_content(prompt, use_stream=True)
+        except Exception as e:
+            print(f"Error generating response stream: {e}")
+            yield f"Error: {str(e)}"
     
     def chat(
         self, 

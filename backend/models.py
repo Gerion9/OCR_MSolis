@@ -70,18 +70,6 @@ class DocumentUploadResponse(BaseModel):
     filename: Optional[str] = None
 
 
-class DocumentProcessResponse(BaseModel):
-    """
-    Respuesta al procesar un documento
-    """
-    success: bool
-    message: str
-    document_id: int
-    markdown_content: Optional[str] = None
-    generated_filename: Optional[str] = None
-    download_url: Optional[str] = None
-
-
 class DocumentStatusResponse(BaseModel):
     """
     Respuesta de estado de un documento
@@ -94,13 +82,6 @@ class DocumentStatusResponse(BaseModel):
     error_message: Optional[str] = None
 
 
-class RegenerateRequest(BaseModel):
-    """
-    Solicitud para regenerar un documento
-    """
-    document_id: int
-
-
 class HealthCheckResponse(BaseModel):
     """
     Respuesta del health check
@@ -111,18 +92,6 @@ class HealthCheckResponse(BaseModel):
     ai_service: str
 
 
-class CoverLetterGenerateResponse(BaseModel):
-    """
-    Respuesta al generar un Cover Letter
-    """
-    success: bool
-    message: str
-    document_id: int
-    cover_letter_markdown: Optional[str] = None
-    cover_letter_filename: Optional[str] = None
-    download_url: Optional[str] = None
-
-
 class ChatMessage(BaseModel):
     """
     Mensaje de chat del usuario
@@ -131,7 +100,6 @@ class ChatMessage(BaseModel):
     document_id: int
     document_type: str = "declaration"  # 'declaration' o 'cover'
     user_id: Optional[str] = None
-    ai_provider: Optional[str] = None  # Proveedor de IA seleccionado
 
 
 class ChatResponse(BaseModel):
@@ -143,13 +111,6 @@ class ChatResponse(BaseModel):
     response: Optional[str] = None
     has_modification: bool = False
     modified_text: Optional[str] = None
-
-
-class ProcessDocumentRequest(BaseModel):
-    """
-    Solicitud para procesar un documento con un proveedor de IA específico
-    """
-    ai_provider: Optional[str] = None  # 'google_gemini' o 'groq_ai'
 
 
 class AIProvidersResponse(BaseModel):
